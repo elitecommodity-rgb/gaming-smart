@@ -68,3 +68,7 @@ table.kv{margin-top:10px;background:transparent;border:0}
 table.kv td{border-bottom:1px solid var(--line);padding:7px 0}
 table.kv td:first-child{color:var(--mute);width:110px}
 .flaglist{margin:8px 0 0 18px;padding:0;color:var(--gold)}
+.logo{font-weight:800;letter-spacing:.14em;color:var(--gold);font-size:22px;margin-bottom:2px}
+@media(max-width:600px){main{padding:14px 12px 50px}th,td{padding:8px 8px}.card .v{font-size:20px}nav a{padding:6px 8px}}
+form.inline{display:inline}
+[hidden]{display:none!important}
