@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="viewhead"><div><div class="eyebrow">Protection of Personal Information Act (POPIA)</div><h1>Privacy notice</h1>
+<div class="sub">How personal information is used in this system. Please read it with the client, or give them a copy.</div></div><button class="sm noprint" onclick="window.print()">Print</button></div>
+<div class="stack" style="max-width:820px">
+<div class="card"><h3>Who is responsible</h3>
+<p>The responsible party for the personal information in this system is <b>{{ party }}</b>. {% if ro %}The Information Officer is <b>{{ ro }}</b>{% if ro_email %}, <span class="mono">{{ ro_email }}</span>{% endif %}.{% else %}The Information Officer's details must be filled in by the responsible party (set INFO_OFFICER_NAME and INFO_OFFICER_EMAIL).{% endif %}</p>
+<p>Gilded Age Consulting supplies and supports the software as an <b>operator</b>. It processes information only on the responsible party's instructions and under a written agreement. More at www.gildedac.co.za.</p></div>
+<div class="card"><h3>What is collected</h3>
+<p>Full name; ID or passport number; phone number; photographs of identity documents and proof of address; records of play, wins, losses and payouts, including the signed large-payout form and photo; the staff member who captured each record and when.</p></div>
+<div class="card"><h3>Why it is collected</h3>
+<ul><li>To keep accurate records of money paid out on gaming machines and to link each payout to the person who received it.</li>
+<li>To verify identity and age (adults only), prevent fraud and settle disputes.</li>
+<li>To meet record-keeping and reporting duties that apply to licensed gaming and anti-money-laundering rules.</li></ul>
+<p>The information is not used for marketing and is not sold.</p></div>
+<div class="card"><h3>Who can see it</h3>
+<p>Only signed-in staff of the responsible party. ID numbers are masked for capture staff and shown in full to supervisors and administrators. Every view of a client record, export and removal is logged. Gilded Age Consulting sees only totals (number of machines, clients and monthly turnover), never names, ID numbers or photographs.</p></div>
+<div class="card"><h3>Where it is kept and how it is protected</h3>
+<p>On a hosted server run by a cloud provider, which may be outside South Africa. The provider is bound to protect the information. Safeguards: sign-in with individual accounts and roles, passwords of at least {{ 10 }} characters, lock-out after repeated failed sign-ins, automatic sign-out after 8 hours, encrypted connections (HTTPS) and a full audit trail. Fonts are loaded from Google Fonts, which receives the visitor's IP address.</p></div>
+<div class="card"><h3>How long it is kept</h3>
+<p>Client details are kept while the client is active and for {{ years }} years after the last activity, then personal details are removed. Financial records are kept without a name where the law requires records to be kept. Documents such as ID photos are deleted when a client is anonymised.</p></div>
+<div class="card"><h3>Your rights</h3>
+<p>You may ask to see the information held about you, have it corrected, ask for it to be deleted or ask us to stop using it, subject to what the law requires us to keep. Requests are answered within 30 days. Ask any member of staff or the Information Officer.</p>
+<p>If you are unhappy, you can complain to the Information Regulator: www.inforegulator.org.za.</p></div>
+<p class="hint">This notice describes how the system is built and used. It is not legal advice. The responsible party should have it reviewed against its own licence conditions and registered with the Information Regulator as POPIA requires.</p>
+</div>
+{% endblock %}
