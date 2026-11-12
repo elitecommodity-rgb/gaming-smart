@@ -1,12 +1,18 @@
 {% extends "base.html" %}
 {% block body %}
 <h1>Documents</h1>
-<form class="box" method="post" enctype="multipart/form-data">
-  <label>Document type<select name="doc_type">{% for t in types %}<option>{{ t }}</option>{% endfor %}</select></label>
+<p class="hint">Photograph or upload a document. The app reads it, suggests the type, client and machine, and keeps the reading with the file so it can be checked later.</p>
+<form id="df" class="box" method="post" enctype="multipart/form-data">
+  <input type="hidden" name="ocr_text" id="ocr_text">
+  <label>Take photo<input id="cam" type="file" name="files" accept="image/*" capture="environment"></label>
+  <label>…or choose files<input id="pick" type="file" name="files" accept="image/*,application/pdf" multiple></label>
+  <div id="ocrstatus" class="hint" style="grid-column:1/-1"></div>
+  <img id="preview" class="preview" alt="Preview" hidden>
+  <label>Document type<select name="doc_type" id="doc_type">{% for t in types %}<option>{{ t }}</option>{% endfor %}</select></label>
   <label>Client (optional)<select name="client_id"><option value="">— none —</option>{% for c in clients %}<option value="{{ c.id }}">{{ c.full_name }}</option>{% endfor %}</select></label>
   <label>Machine (optional)<select name="machine_id"><option value="">— none —</option>{% for m in machines %}<option value="{{ m.id }}">{{ m.code }}</option>{% endfor %}</select></label>
-  <label>Take photo<input type="file" name="files" accept="image/*" capture="environment"></label>
-  <label>…or choose files<input type="file" name="files" accept="image/*,application/pdf" multiple></label>
+  <label class="meter" hidden>Meter: coin in<input name="meter_in" inputmode="decimal"></label>
+  <label class="meter" hidden>Meter: coin out<input name="meter_out" inputmode="decimal"></label>
   <button>Upload</button>
 </form>
 <h2>All documents</h2>
@@ -14,8 +20,30 @@
 {% for d in rows %}
   <a class="thumb" href="{{ url_for('files', name=d.filename) }}" target="_blank">
     {% if d.filename.endswith('.pdf') %}<div class="pdf">PDF</div>{% else %}<img src="{{ url_for('files', name=d.filename) }}" loading="lazy">{% endif %}
-    <div class="m">{{ d.doc_type }}<br>{{ d.full_name or d.code or '—' }}<br>{{ d.uploaded_at }}</div>
+    <div class="m">{{ d.doc_type }}<br>{{ d.full_name or d.code or '—' }}<br>{{ d.uploaded_at }}
+      {% if d.ocr_flags and 'not machine-read' not in d.ocr_flags %}<br><span class="pill {{ 'ok' if 'matches' in d.ocr_flags else 'warn' }}" title="{{ d.ocr_flags }}">{{ 'agrees' if 'matches' in d.ocr_flags else 'check' }}</span>{% endif %}</div>
   </a>
 {% else %}<div class="card">Nothing uploaded yet.</div>{% endfor %}
 </div>
+<script src="{{ url_for('static', filename='capture.js') }}"></script>
+<script>
+const df = document.getElementById('df');
+const syncMeter = () => document.querySelectorAll('.meter').forEach(l => l.hidden = df.doc_type.value !== 'Machine meter photo');
+df.doc_type.addEventListener('change', syncMeter); syncMeter();
+const apply = async (s, h) => {
+  const got = [];
+  if (s.doc_type && h.setv(df.doc_type, s.doc_type, true)) { got.push('type ' + s.doc_type); syncMeter(); }
+  if (s.machine_id && h.setv(df.machine_id, s.machine_id)) got.push('machine ' + s.machine_code);
+  if (s.client && h.setv(df.client_id, s.client.id)) got.push('client ' + s.client.name);
+  if (df.doc_type.value === 'Machine meter photo') {
+    const m = await h.suggest('meter', h.text);
+    if (m.machine_id && h.setv(df.machine_id, m.machine_id)) got.push('machine ' + m.machine_code);
+    if (m.coin_in && h.setv(df.meter_in, m.coin_in)) got.push('coin in ' + m.coin_in);
+    if (m.coin_out && h.setv(df.meter_out, m.coin_out)) got.push('coin out ' + m.coin_out);
+  }
+  return got;
+};
+GSCapture({ input: '#cam', status: '#ocrstatus', preview: '#preview', ocr: '#ocr_text', kind: 'doc', apply });
+GSCapture({ input: '#pick', status: '#ocrstatus', preview: '#preview', ocr: '#ocr_text', kind: 'doc', apply });
+</script>
 {% endblock %}
