@@ -4,7 +4,7 @@
 {% block body %}
 {% set k = b.kpis %}
 <div class="rephead">
-  <h1>BI board</h1>
+  <div><div class="eyebrow">Analysis</div><h1>BI board</h1></div>
   <span class="noprint"><button class="sm ghost" onclick="window.print()">Print / save as PDF</button> <a class="btn sm" href="{{ url_for('reports') }}">Downloadable reports</a></span>
 </div>
 <form class="box noprint" method="get" style="margin-bottom:6px">
@@ -90,14 +90,14 @@
 <script>
 const B = {{ {'trend': b.trend, 'machines': b.machines, 'sizes': b.sizes, 'client_mix': b.client_mix, 'hours': b.hours, 'quality': b.quality}|tojson }};
 if (window.Chart) {
-  Chart.defaults.color = '#8b94a7'; Chart.defaults.borderColor = '#262d3b';
+  Chart.defaults.color = '#A9C0C4'; Chart.defaults.borderColor = 'rgba(245,243,238,.1)'; Chart.defaults.font.family = "'DM Sans',system-ui,sans-serif";
   Chart.defaults.maintainAspectRatio = false;
-  const GOLD = '#d4a63a', GREEN = '#3fb97a', RED = '#e5574f', BLUE = '#5b8def', GREY = '#5b6579', PURPLE = '#9b7bd6';
+  const GOLD = '#E8C547', GREEN = '#5EEAD4', RED = '#E8A598', BLUE = '#7AC5E4', GREY = '#6f8c96', PURPLE = '#B9A4FF';
   const money = v => 'R ' + Math.round(v).toLocaleString('en-ZA');
   const mk = (id, cfg) => { const el = document.getElementById(id); if (el) new Chart(el, cfg); };
   const T = B.trend;
   mk('c_trend', { data: { labels: T.labels, datasets: [
-    { type: 'bar', label: 'House net', data: T.net, backgroundColor: T.net.map(v => v >= 0 ? 'rgba(63,185,122,.55)' : 'rgba(229,87,79,.6)') },
+    { type: 'bar', label: 'House net', data: T.net, backgroundColor: T.net.map(v => v >= 0 ? 'rgba(94,234,212,.6)' : 'rgba(232,165,152,.7)') },
     { type: 'line', label: 'Total in', data: T.in, borderColor: BLUE, backgroundColor: BLUE, tension: .25, pointRadius: 0 },
     { type: 'line', label: 'Payouts', data: T.out, borderColor: GOLD, backgroundColor: GOLD, tension: .25, pointRadius: 0 }] },
     options: { scales: { y: { ticks: { callback: money } } }, plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + money(c.parsed.y) } } } } });
@@ -113,13 +113,13 @@ if (window.Chart) {
     options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { callback: v => v + '%' } } } } });
   mk('c_size', { type: 'bar', data: { labels: B.sizes.map(s => s.label), datasets: [{ label: '% of payouts', data: B.sizes.map(s => s.pct), backgroundColor: GOLD }] },
     options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.parsed.y + '% (' + B.sizes[c.dataIndex].n + ' payouts, ' + money(B.sizes[c.dataIndex].v) + ')' } } }, scales: { y: { ticks: { callback: v => v + '%' } } } } });
-  const pal = [BLUE, GOLD, GREEN, PURPLE, RED, '#4fb3bf', '#c97b4a', '#8fa0b8', GREY, '#6b5d3a'];
-  mk('c_clients', { type: 'doughnut', data: { labels: B.client_mix.labels, datasets: [{ data: B.client_mix.data, backgroundColor: pal, borderColor: '#181d27' }] },
+  const pal = [BLUE, GOLD, GREEN, PURPLE, RED, '#4fb3bf', '#C9A27C', '#8fa0b8', GREY, '#B28029'];
+  mk('c_clients', { type: 'doughnut', data: { labels: B.client_mix.labels, datasets: [{ data: B.client_mix.data, backgroundColor: pal, borderColor: '#16303F' }] },
     options: { plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: c => c.label + ': ' + money(c.parsed) } } } } });
   mk('c_hours', { type: 'bar', data: { labels: B.hours.labels, datasets: [{ label: 'Large payouts', data: B.hours.n, backgroundColor: PURPLE }] },
     options: { plugins: { legend: { display: false } }, scales: { y: { ticks: { precision: 0 } } } } });
   const qc = { match: GREEN, differs: RED, unread: GOLD, manual: GREY };
-  mk('c_quality', { type: 'doughnut', data: { labels: B.quality.map(q => q.label), datasets: [{ data: B.quality.map(q => q.n), backgroundColor: B.quality.map(q => qc[q.key]), borderColor: '#181d27' }] },
+  mk('c_quality', { type: 'doughnut', data: { labels: B.quality.map(q => q.label), datasets: [{ data: B.quality.map(q => q.n), backgroundColor: B.quality.map(q => qc[q.key]), borderColor: '#16303F' }] },
     options: { plugins: { legend: { position: 'right' } } } });
 }
 </script>
