@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="viewhead"><div><div class="eyebrow">Client backend</div><h1>Import history</h1>
+<div class="sub">Bring in past wins, losses, clients and machines from CSV, Excel or a text PDF. Each table is recognised by its column headings and filed in the matching section. Nothing is saved until you confirm.</div></div></div>
+{% if not pend %}
+<form class="box" method="post" enctype="multipart/form-data">
+  <label style="grid-column:1/-1">File (.csv, .xlsx or text .pdf, up to 16 MB)<input type="file" name="file" accept=".csv,.xlsx,.xlsm,.pdf,.txt,.tsv" required></label>
+  <button>Read the file</button>
+</form>
+<h2>What the app looks for</h2>
+<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+{% for k, lab in kinds.items() %}<div class="card"><div class="k">{{ lab }}</div><p style="margin:8px 0">{{ help[k] }}</p><a href="{{ url_for('import_template', kind=k) }}">Download a template</a></div>{% endfor %}
+</div>
+<p class="hint" style="margin-top:14px">An Excel file can hold several sheets, for example Machines, Clients and Entries, and each is filed on its own. Repeated imports are safe: rows already in the app are skipped. Dates can be 2026-03-14 or 14/03/2026; amounts may carry an R, spaces or commas. PDFs must contain real text (not a scan or photo). For scanned paper use the photo capture instead. Imported entries are marked as imported history and have no slip photo, so the BI board counts them as not photo-backed.</p>
+<h2>Recent imports</h2>
+<div class="tablewrap"><table><tr><th>When</th><th>By</th><th>What was filed</th></tr>
+{% for r in recent %}<tr><td class="mono">{{ r.at }}</td><td>{{ r.user }}</td><td>{{ r.detail }}</td></tr>{% else %}<tr><td colspan="3">No imports yet.</td></tr>{% endfor %}</table></div>
+{% else %}
+<p class="hint">File: <b>{{ pend.filename }}</b></p>
+<form method="post" class="stack">
+{% for x in plans %}{% set tb = x.tb %}{% set pl = x.pl %}
+<div class="card">
+  <div class="rephead"><h3>{{ tb.sheet }}</h3>{% if tb.kind %}<span class="pill ok">filed under {{ kinds[tb.kind] }}</span>{% else %}<span class="pill bad">not recognised</span>{% endif %}</div>
+  {% if not tb.kind %}
+    <p class="hint">Columns found: {{ tb.headers|join(', ') }}. Rename them to match one of: {% for k, lab in kinds.items() %}<b>{{ lab }}</b> ({{ help[k] }}){{ '; ' if not loop.last }}{% endfor %}. This table will be skipped.</p>
+  {% else %}
+    <p class="hint">{{ x.n }} rows. Columns used: {% for f, i in tb.map.items() %}{{ f|replace('_', ' ') }} ← “{{ tb.headers[i] }}”{{ ', ' if not loop.last }}{% endfor %}</p>
+    <div class="grid" style="margin:10px 0">
+      <div class="card"><div class="k">New</div><div class="v pos">{{ pl.new }}</div></div>
+      <div class="card"><div class="k">Already in the app</div><div class="v">{{ pl.dups }}</div></div>
+      <div class="card"><div class="k">Rows with problems</div><div class="v {{ 'neg' if pl.errors }}">{{ pl.errors|length }}</div></div>
+    </div>
+    {% if tb.kind == 'entries' %}
+      {% if pl.new_machines %}<p class="hint">Machines not yet in the app, will be created: <b>{{ pl.new_machines|join(', ') }}</b></p>{% endif %}
+      {% if pl.new_clients %}<p class="hint">Client names not yet in the app, will be created: <b>{{ pl.new_clients }}</b></p>{% endif %}
+      {% if pl.large %}<p class="hint neg">{{ pl.large }} payouts are R {{ '{:,.0f}'.format(5000) }} or more. They are imported as history without a payout form. New large payouts must still be captured on the Large payouts page.</p>{% endif %}
+    {% endif %}
+    {% set sample = pl['items']|rejectattr('dup')|list %}
+    {% if sample %}<div class="tablewrap"><table>
+      {% if tb.kind == 'entries' %}<tr><th>Row</th><th>Date</th><th>Machine</th><th>Client</th><th class="num">In</th><th class="num">Out</th></tr>
+        {% for i in sample[:8] %}<tr><td>{{ i.row }}</td><td>{{ i.date }}</td><td><b>{{ i.machine }}</b></td><td>{{ i.client or '—' }}</td><td class="num">R {{ '{:,.2f}'.format(i['in']) }}</td><td class="num">R {{ '{:,.2f}'.format(i.out) }}</td></tr>{% endfor %}
+      {% elif tb.kind == 'clients' %}<tr><th>Row</th><th>Name</th><th>ID number</th><th>Phone</th></tr>
+        {% for i in sample[:8] %}<tr><td>{{ i.row }}</td><td>{{ i.name }}</td><td>{{ i.id_number or '—' }}</td><td>{{ i.phone or '—' }}</td></tr>{% endfor %}
+      {% else %}<tr><th>Row</th><th>Code</th><th>Location</th><th>Model</th></tr>
+        {% for i in sample[:8] %}<tr><td>{{ i.row }}</td><td><b>{{ i.code }}</b></td><td>{{ i.location or '—' }}</td><td>{{ i.model or '—' }}</td></tr>{% endfor %}
+      {% endif %}</table></div>{% if sample|length > 8 %}<p class="hint">First 8 of {{ sample|length }} new rows shown.</p>{% endif %}{% endif %}
+    {% if pl.errors %}<details class="more"><summary>Rows with problems (skipped)</summary>
+      <ul class="flaglist">{% for n, why in pl.errors[:25] %}<li>Row {{ n }}: {{ why }}</li>{% endfor %}</ul>{% if pl.errors|length > 25 %}<p class="hint">and {{ pl.errors|length - 25 }} more.</p>{% endif %}</details>{% endif %}
+  {% endif %}
+</div>
+{% endfor %}
+<label class="check"><input type="checkbox" name="create" value="1" checked> Create machines and clients that are not in the app yet</label>
+<div><button>Import now</button> <a class="btn ghost" href="{{ url_for('import_history') }}">Cancel</a></div>
+</form>
+{% endif %}
+{% endblock %}
