@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Staff accounts</h1>
+<p style="color:var(--mute)"><b>Staff</b> capture wins/losses, clients and documents. <b>Supervisors</b> also see the dashboard, reports, downloads and audit trail. <b>Admins</b> also manage users and machines.</p>
+<form class="box" method="post">
+  <label>Username<input name="username" required></label>
+  <label>Password (min 8)<input name="password" type="password" minlength="8" required></label>
+  <label>Role<select name="role">{% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select></label>
+  <button>Add user</button>
+</form>
+<h2>All users</h2>
+<div class="tablewrap"><table>
+<tr><th>User</th><th>Role</th><th>Status</th><th>Reset password</th><th></th></tr>
+{% for u in rows %}<tr>
+<td><b>{{ u.username }}</b>{% if u.username == username %} <span class="pill">you</span>{% endif %}</td>
+<td>{% if u.username == username %}{{ u.role }}{% else %}
+  <form method="post" action="{{ url_for('user_role', uid=u.id) }}" style="display:flex;gap:6px">
+    <select name="role">{% for r in roles %}<option {{ 'selected' if r == u.role }}>{{ r }}</option>{% endfor %}</select>
+    <button class="sm">Save</button></form>{% endif %}</td>
+<td>{{ 'Active' if u.active else 'Disabled' }}</td>
+<td><form method="post" action="{{ url_for('user_password', uid=u.id) }}" style="display:flex;gap:6px">
+  <input name="password" type="password" minlength="8" placeholder="New password" required><button class="sm">Set</button></form></td>
+<td>{% if u.username != username %}<form method="post" action="{{ url_for('user_toggle', uid=u.id) }}"><button class="sm">{{ 'Disable' if u.active else 'Enable' }}</button></form>{% endif %}</td>
+</tr>{% endfor %}
+</table></div>
+{% endblock %}
