@@ -7,13 +7,16 @@
 {% if session.user %}
 <nav>
   <span class="brand">GAMING SMART</span>
-  <a href="{{ url_for('dashboard') }}">Dashboard</a>
+  {% if can('supervisor') %}<a href="{{ url_for('dashboard') }}">Dashboard</a>{% endif %}
   <a href="{{ url_for('entries') }}">Wins / Losses</a>
   <a href="{{ url_for('clients') }}">Clients</a>
   <a href="{{ url_for('documents') }}">Documents</a>
   <a href="{{ url_for('machines') }}">Machines</a>
-  <a href="{{ url_for('audit') }}">Audit</a>
+  {% if can('supervisor') %}<a href="{{ url_for('reports') }}">Reports</a>
+  <a href="{{ url_for('audit') }}">Audit</a>{% endif %}
+  {% if can('admin') %}<a href="{{ url_for('users') }}">Users</a>{% endif %}
   <span class="sp"></span>
+  <span class="pill">{{ username }} · {{ role }}</span>
   <a href="{{ url_for('logout') }}">Log out</a>
 </nav>
 {% endif %}
