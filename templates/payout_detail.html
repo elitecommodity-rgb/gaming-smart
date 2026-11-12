@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="rephead">
+  <h1>Large payout #{{ p.id }} {% if p.status == 'void' %}<span class="pill bad">voided</span>{% endif %}</h1>
+  <a class="btn sm" href="{{ url_for('payouts') }}">← All large payouts</a>
+</div>
+<div class="split">
+  <div class="card">
+    <a href="{{ url_for('files', name=p.filename) }}" target="_blank"><img class="formphoto" src="{{ url_for('files', name=p.filename) }}" alt="Payout form photo"></a>
+    <p class="hint">Tap the photo to open it full size.</p>
+  </div>
+  <div>
+    <div class="card">
+      <div class="k">Amount paid</div><div class="v">R {{ '{:,.2f}'.format(p.amount) }}</div>
+      <table class="kv">
+        <tr><td>Machine</td><td><b>{{ p.code }}</b>{% if p.location %} · {{ p.location }}{% endif %}</td></tr>
+        <tr><td>Paid</td><td>{{ p.paid_at }}</td></tr>
+        <tr><td>Customer</td><td><a href="{{ url_for('client_detail', cid=p.client_id) }}">{{ p.full_name }}</a></td></tr>
+        <tr><td>ID</td><td>{{ p.id_number or '—' }} <span class="pill">{{ {'sa_id': 'SA ID', 'passport': 'Passport'}.get(p.id_type, 'ID') }}</span></td></tr>
+        <tr><td>Phone</td><td>{{ p.phone or '—' }}</td></tr>
+        <tr><td>Captured by</td><td>{{ p.captured_by }} · {{ p.created_at }}</td></tr>
+        {% if p.notes %}<tr><td>Notes</td><td>{{ p.notes }}</td></tr>{% endif %}
+      </table>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <div class="k">Checks</div>
+      {% if p.flags and 'Entered manually' not in p.flags %}
+        <ul class="flaglist">{% for x in p.flags.split('; ') %}<li>{{ x }}</li>{% endfor %}</ul>
+        <p class="hint">The photo reading differs from what was entered. Compare against the photo.</p>
+      {% elif p.flags %}<p>Entered by hand. The photo could not be read automatically.</p>
+      {% else %}<p class="pos">Machine, amount and customer match the photo.</p>{% endif %}
+      <p class="hint">ID number format and age were verified when this was saved. The payout is counted in the machine, client and business reports.</p>
+    </div>
+    {% if p.status == 'void' %}
+    <div class="card" style="margin-top:12px"><div class="k">Voided</div>
+      <p>{{ p.void_reason }}</p><p class="hint">by {{ p.voided_by }} · {{ p.voided_at }}. Removed from the reports.</p></div>
+    {% elif can('supervisor') %}
+    <form class="card" method="post" action="{{ url_for('payout_void', pid=p.id) }}" style="margin-top:12px">
+      <div class="k">Captured by mistake?</div>
+      <label>Reason for voiding<input name="reason" required minlength="5" placeholder="e.g. wrong machine, duplicate"></label>
+      <button class="sm" style="margin-top:8px">Void this payout</button>
+      <p class="hint">Removes it from the reports. The photo and record stay for the audit trail.</p>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
