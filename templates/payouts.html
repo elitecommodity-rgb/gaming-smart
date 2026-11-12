@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="rephead">
+  <h1>Large payouts</h1>
+  <a class="btn" href="{{ url_for('payout_new') }}">+ New large payout</a>
+</div>
+<div class="grid" style="margin-bottom:14px">
+  <div class="card"><div class="k">This month</div><div class="v">{{ k.n }}</div><div class="s">payouts of R {{ '{:,.0f}'.format(lo) }}+</div></div>
+  <div class="card"><div class="k">Paid out this month</div><div class="v">R {{ '{:,.2f}'.format(k.t) }}</div></div>
+</div>
+
+<form class="box" method="get">
+  <label>From<input type="date" name="start" value="{{ a.get('start', '') }}"></label>
+  <label>To<input type="date" name="end" value="{{ a.get('end', '') }}"></label>
+  <label>Machine<select name="machine"><option value="">All</option>{% for m in machines %}<option value="{{ m.id }}" {{ 'selected' if a.get('machine') == m.id|string }}>{{ m.code }}</option>{% endfor %}</select></label>
+  <label>Customer name or ID<input name="q" value="{{ a.get('q', '') }}"></label>
+  <label>Status<select name="status"><option value="">All</option><option value="valid" {{ 'selected' if a.get('status') == 'valid' }}>Valid</option><option value="void" {{ 'selected' if a.get('status') == 'void' }}>Voided</option></select></label>
+  <button>Filter</button>
+</form>
+
+<h2>{{ total }} payout{{ '' if total == 1 else 's' }}</h2>
+<div class="tablewrap"><table>
+<tr><th></th><th>#</th><th>Paid</th><th>Machine</th><th>Customer</th><th>Amount</th><th>Captured by</th><th>Checks</th></tr>
+{% for p in rows %}<tr {{ 'class=voided' if p.status == 'void' }}>
+  <td><a href="{{ url_for('payout_detail', pid=p.id) }}"><img class="mini" loading="lazy" src="{{ url_for('files', name='t_' ~ p.filename) }}" alt=""></a></td>
+  <td><a href="{{ url_for('payout_detail', pid=p.id) }}">#{{ p.id }}</a></td>
+  <td>{{ p.paid_at }}</td><td><b>{{ p.code }}</b></td><td>{{ p.full_name }}</td>
+  <td>R {{ '{:,.2f}'.format(p.amount) }}</td><td>{{ p.captured_by }}</td>
+  <td>{% if p.status == 'void' %}<span class="pill bad">voided</span>{% elif p.flags and 'Entered manually' not in p.flags %}<span class="pill warn" title="{{ p.flags }}">check</span>{% elif p.flags %}<span class="pill">manual</span>{% else %}<span class="pill ok">matches photo</span>{% endif %}</td>
+</tr>{% else %}<tr><td colspan="8">No large payouts found.</td></tr>{% endfor %}
+</table></div>
+
+{% if pages > 1 %}
+<div class="pager">
+  {% if page > 1 %}<a class="btn sm" href="{{ url_for('payouts', page=page - 1, **qs) }}">← Newer</a>{% endif %}
+  <span>Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="btn sm" href="{{ url_for('payouts', page=page + 1, **qs) }}">Older →</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}
