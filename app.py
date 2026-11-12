@@ -100,6 +100,9 @@ def init_db(conn):
         conn.execute("INSERT OR IGNORE INTO users(username,pw_hash,role,active,created_at) VALUES(?,?,?,?,?)",
                      (ADMIN_USER, generate_password_hash(ADMIN_PASSWORD), "admin", 1, now()))
     conn.commit()
+    if os.environ.get("DEMO_DATA") == "1":  # presentation mode: sample data, only into an empty database
+        import demo
+        demo.seed(conn, UPLOADS, local_today(), now())
 
 
 def db():
@@ -159,6 +162,16 @@ def inject():
 @app.errorhandler(403)
 def forbidden(_):
     return render_template("forbidden.html"), 403
+
+
+@app.errorhandler(404)
+def notfound(_):
+    return render_template("error.html", code=404, msg="That page or record could not be found."), 404
+
+
+@app.errorhandler(500)
+def servererr(_):
+    return render_template("error.html", code=500, msg="Something went wrong on our side. Nothing was lost - please try again."), 500
 
 
 @app.route("/health")
@@ -226,7 +239,10 @@ def dashboard():
     """, (month + "%",)).fetchall()
     recent = d.execute("""SELECT d.*, c.full_name FROM documents d
         LEFT JOIN clients c ON c.id=d.client_id ORDER BY d.id DESC LIMIT 6""").fetchall()
-    return render_template("dashboard.html", s=stats, pm=per_machine, recent=recent)
+    bigrecent = d.execute("""SELECT p.id, p.paid_at, p.amount, m.code, c.full_name FROM payouts p
+        JOIN machines m ON m.id=p.machine_id JOIN clients c ON c.id=p.client_id
+        WHERE p.status='valid' ORDER BY p.paid_at DESC, p.id DESC LIMIT 5""").fetchall()
+    return render_template("dashboard.html", s=stats, pm=per_machine, recent=recent, bigrecent=bigrecent)
 
 
 # ------------------------------------------------------------------ machines
@@ -237,15 +253,31 @@ def machines():
     if request.method == "POST":
         if ROLES[g.role] < ROLES["admin"]:
             abort(403)
+        code = " ".join(request.form.get("code", "").split()).upper()
+        if not code:
+            flash("Enter a machine code")
+            return redirect(url_for("machines"))
         try:
             d.execute("INSERT INTO machines(code,location,model) VALUES(?,?,?)",
-                      (request.form["code"].strip(), request.form["location"],
-                       request.form["model"]))
-            log("machine_add", request.form["code"]); d.commit()
+                      (code, request.form.get("location", "").strip(), request.form.get("model", "").strip()))
+            log("machine_add", code); d.commit()
+            flash(f"Machine {code} added")
         except sqlite3.IntegrityError:
             flash("Machine code already exists")
         return redirect(url_for("machines"))
     return render_template("machines.html", rows=d.execute("SELECT * FROM machines ORDER BY code").fetchall())
+
+
+@app.route("/machines/<int:mid>/toggle", methods=["POST"])
+@require("admin")
+def machine_toggle(mid):
+    d = db()
+    m = d.execute("SELECT * FROM machines WHERE id=?", (mid,)).fetchone() or abort(404)
+    new = "inactive" if m["status"] == "active" else "active"
+    d.execute("UPDATE machines SET status=? WHERE id=?", (new, mid))
+    log("machine_status", f"{m['code']} -> {new}"); d.commit()
+    flash(f"{m['code']} is now {new}")
+    return redirect(url_for("machines"))
 
 
 # ------------------------------------------------------------------- clients
@@ -254,10 +286,25 @@ def machines():
 def clients():
     d = db()
     if request.method == "POST":
-        cur = d.execute("INSERT INTO clients(full_name,id_number,phone,notes,created_at) VALUES(?,?,?,?,?)",
-                        (request.form["full_name"], request.form["id_number"],
-                         request.form["phone"], request.form["notes"], now()))
-        log("client_add", request.form["full_name"]); d.commit()
+        f = request.form
+        name = " ".join(f.get("full_name", "").split())
+        idn = vd.clean_id(f.get("id_number", ""))
+        if len(name) < 2:
+            flash("Enter the client's full name")
+            return redirect(url_for("clients"))
+        if idn:
+            if idn.isdigit() and len(idn) == 13:
+                ok, age, msg = vd.sa_id_info(idn, local_today())
+                if not ok:
+                    flash(msg); return redirect(url_for("clients"))
+            old = _find_client_by_id(d, idn)
+            if old:
+                flash("A client with that ID number already exists - opened their record")
+                return redirect(url_for("client_detail", cid=old["id"]))
+        cur = d.execute("INSERT INTO clients(full_name,id_number,phone,notes,created_at,id_type) VALUES(?,?,?,?,?,?)",
+                        (name, idn, f.get("phone", "").strip(), f.get("notes", "").strip(), now(),
+                         "sa_id" if idn.isdigit() and len(idn) == 13 else ("other" if idn else None)))
+        log("client_add", name); d.commit()
         return redirect(url_for("client_detail", cid=cur.lastrowid))
     q = request.args.get("q", "")
     rows = d.execute("SELECT * FROM clients WHERE full_name LIKE ? OR id_number LIKE ? OR phone LIKE ? ORDER BY full_name LIMIT 300",
@@ -298,17 +345,47 @@ def api_clients():
 def entries():
     d = db()
     if request.method == "POST":
+        f = request.form
+        errs = []
+
+        def money(key):
+            raw = re.sub(r"[ ,]", "", f.get(key, "") or "0")
+            try:
+                v = round(float(raw), 2)
+            except ValueError:
+                errs.append("Amounts must be numbers"); return 0.0
+            if v < 0 or v > LARGE_MAX:
+                errs.append("Amounts must be between 0 and R {:,.0f}".format(LARGE_MAX))
+            return v
+        amt_in, amt_out = money("amount_in"), money("amount_out")
+        if not errs and amt_in == 0 and amt_out == 0:
+            errs.append("Enter an amount in or an amount out")
+        if amt_out >= LARGE_MIN:
+            errs.append("Payouts of R {:,.0f} and above are captured on the Large payouts page, "
+                        "with the photo of the signed form".format(LARGE_MIN))
+        try:
+            ed = datetime.date.fromisoformat(f.get("entry_date", ""))
+            if ed > local_today():
+                errs.append("The date cannot be in the future")
+        except ValueError:
+            errs.append("Enter a valid date")
+        mid = f.get("machine_id", "")
+        if not d.execute("SELECT 1 FROM machines WHERE id=? AND status='active'", (mid if mid.isdigit() else 0,)).fetchone():
+            errs.append("Select an active machine")
+        cl = f.get("client_id") or None
+        if cl and not d.execute("SELECT 1 FROM clients WHERE id=?", (cl if cl.isdigit() else 0,)).fetchone():
+            errs.append("The selected client was not found")
+        if errs:
+            for e in errs:
+                flash(e)
+            return redirect(url_for("entries"))
         cur = d.execute("""INSERT INTO entries(machine_id,client_id,entry_date,amount_in,amount_out,notes,captured_by,created_at)
             VALUES(?,?,?,?,?,?,?,?)""",
-            (request.form["machine_id"], request.form.get("client_id") or None,
-             request.form["entry_date"], float(request.form.get("amount_in") or 0),
-             float(request.form.get("amount_out") or 0), request.form["notes"],
-             session["user"], now()))
+            (mid, cl, ed.isoformat(), amt_in, amt_out, f.get("notes", "").strip(), session["user"], now()))
         eid = cur.lastrowid
-        save_upload(request.files.get("photo"), "Payout slip", entry_id=eid,
-                    client_id=request.form.get("client_id") or None,
-                    machine_id=request.form["machine_id"])
+        save_upload(request.files.get("photo"), "Payout slip", entry_id=eid, client_id=cl, machine_id=mid)
         log("entry_add", f"#{eid}"); d.commit()
+        flash("Entry saved")
         return redirect(url_for("entries"))
     rows = d.execute("""SELECT e.*, m.code, c.full_name,
         (SELECT COUNT(*) FROM documents WHERE entry_id=e.id) ndocs
