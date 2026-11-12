@@ -9,6 +9,7 @@
   <span class="brand">GAMING SMART</span>
   {% if can('supervisor') %}<a href="{{ url_for('dashboard') }}">Dashboard</a>{% endif %}
   <a href="{{ url_for('entries') }}">Wins / Losses</a>
+  <a href="{{ url_for('payouts') }}">Large payouts</a>
   <a href="{{ url_for('clients') }}">Clients</a>
   <a href="{{ url_for('documents') }}">Documents</a>
   <a href="{{ url_for('machines') }}">Machines</a>
