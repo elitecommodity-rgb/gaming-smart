@@ -11,8 +11,8 @@
 {% endif %}
 <h2>Register</h2>
 <div class="tablewrap"><table>
-<tr><th>Code</th><th>Location</th><th>Model</th><th>Status</th></tr>
-{% for r in rows %}<tr><td><b>{{ r.code }}</b></td><td>{{ r.location }}</td><td>{{ r.model }}</td><td><span class="pill">{{ r.status }}</span></td></tr>
-{% else %}<tr><td colspan="4">No machines yet.</td></tr>{% endfor %}
+<tr><th>Code</th><th>Location</th><th>Model</th><th>Status</th>{% if can('admin') %}<th></th>{% endif %}</tr>
+{% for r in rows %}<tr><td><b>{{ r.code }}</b></td><td>{{ r.location }}</td><td>{{ r.model }}</td><td><span class="pill {{ 'ok' if r.status == 'active' else 'bad' }}">{{ r.status }}</span></td>{% if can('admin') %}<td><form method="post" action="{{ url_for('machine_toggle', mid=r.id) }}"><button class="sm ghost">{{ 'Switch off' if r.status == 'active' else 'Switch on' }}</button></form></td>{% endif %}</tr>
+{% else %}<tr><td colspan="5">No machines yet.</td></tr>{% endfor %}
 </table></div>
 {% endblock %}
