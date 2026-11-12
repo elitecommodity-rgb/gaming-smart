@@ -1,28 +1,38 @@
 <!doctype html>
 <html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0F1A24">
 <title>{% block title %}Gaming Smart{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=EB+Garamond:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230F1A24'/%3E%3Crect x='6' y='9' width='6' height='14' rx='1.5' fill='%23B28029'/%3E%3Crect x='13' y='6' width='6' height='20' rx='1.5' fill='%23E8C547'/%3E%3Crect x='20' y='11' width='6' height='12' rx='1.5' fill='%235EEAD4'/%3E%3C/svg%3E">
 </head><body>
+{% set ep = request.endpoint or '' %}
 {% if session.user %}
-<nav>
-  <span class="brand">GAMING SMART</span>
-  {% if can('supervisor') %}<a href="{{ url_for('dashboard') }}">Dashboard</a>{% endif %}
-  <a href="{{ url_for('entries') }}">Wins / Losses</a>
-  <a href="{{ url_for('payouts') }}">Large payouts</a>
-  <a href="{{ url_for('clients') }}">Clients</a>
-  <a href="{{ url_for('documents') }}">Documents</a>
-  <a href="{{ url_for('machines') }}">Machines</a>
-  {% if can('supervisor') %}<a href="{{ url_for('reports') }}">Reports</a>
-  <a href="{{ url_for('audit') }}">Audit</a>{% endif %}
-  {% if can('admin') %}<a href="{{ url_for('users') }}">Users</a>{% endif %}
-  <span class="sp"></span>
-  <span class="pill">{{ username }} · {{ role }}</span>
-  <a href="{{ url_for('logout') }}">Log out</a>
+<header class="topnav">
+  <a class="brand" href="{{ url_for('dashboard') }}"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="4" width="26" height="24" rx="5" fill="#16303F" stroke="#E8C547" stroke-width="1.5"/><rect x="7" y="10" width="5" height="12" rx="1.2" fill="#B28029"/><rect x="13.5" y="8" width="5" height="16" rx="1.2" fill="#E8C547"/><rect x="20" y="11" width="5" height="10" rx="1.2" fill="#5EEAD4"/></svg>Gaming Smart</a>
+  <nav class="tabs">
+{% if master_mode %}<a class="tab" href="{{ url_for('master') }}" {% if ep.startswith('master') %}aria-current="page"{% endif %}>Client accounts</a><a class="tab" href="{{ url_for('users') }}" {% if ep == 'users' %}aria-current="page"{% endif %}>Backend users</a><a class="tab" href="{{ url_for('audit') }}" {% if ep == 'audit' %}aria-current="page"{% endif %}>Audit</a>
+{% else %}
+
+    {% if can('supervisor') %}<a class="tab" href="{{ url_for('dashboard') }}" {% if ep == 'dashboard' %}aria-current="page"{% endif %}>Overview</a>{% endif %}
+    <a class="tab" href="{{ url_for('machines') }}" {% if ep in ('machines','machine_install','manual_install') %}aria-current="page"{% endif %}>Machines</a>
+    <a class="tab" href="{{ url_for('entries') }}" {% if ep == 'entries' %}aria-current="page"{% endif %}>Daily log</a>
+    <a class="tab" href="{{ url_for('payouts') }}" {% if ep.startswith('payout') %}aria-current="page"{% endif %}>Large payouts</a>
+    <a class="tab" href="{{ url_for('clients') }}" {% if ep in ('clients','client_detail') %}aria-current="page"{% endif %}>Clients</a>
+    <a class="tab" href="{{ url_for('documents') }}" {% if ep == 'documents' %}aria-current="page"{% endif %}>Documents</a>
+    {% if can('supervisor') %}<a class="tab" href="{{ url_for('bi_board') }}" {% if ep == 'bi_board' %}aria-current="page"{% endif %}>Analysis</a>
+    <a class="tab" href="{{ url_for('import_history') }}" {% if ep.startswith('import') %}aria-current="page"{% endif %}>Import history</a>
+    <a class="tab" href="{{ url_for('reports') }}" {% if ep == 'reports' %}aria-current="page"{% endif %}>Reporting</a>
+    <a class="tab" href="{{ url_for('users') if can('admin') else url_for('audit') }}" {% if ep in ('users','audit') %}aria-current="page"{% endif %}>Administration</a>{% endif %}
+  {% endif %}
 </nav>
+  <div class="nav-right"><span class="biz">{{ username }} · {{ role }}</span><a class="btn ghost sm" href="{{ url_for('logout') }}">Lock</a></div>
+</header>
 {% endif %}
 <main>
 {% for m in get_flashed_messages() %}<div class="flash">{{ m }}</div>{% endfor %}
 {% block body %}{% endblock %}
+<footer class="foot noprint">Gaming Smart · Personal information is handled under POPIA · <a href="{{ url_for('privacy') }}">Privacy notice</a>{% if session.user and can('supervisor') and not master_mode %} · <a href="{{ url_for('compliance') }}">POPIA compliance</a>{% endif %} · www.gildedac.co.za</footer>
 </main>
 </body></html>
