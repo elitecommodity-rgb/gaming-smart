@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>New large payout</h1>
+<p class="hint">For payouts of R {{ '{:,.0f}'.format(lo) }} and above. Take a clear, flat photo of the manual payout form the customer filled in. The app reads it and fills in the machine, customer and amount for you to check.</p>
+{% if errors %}<div class="errors"><b>Please fix:</b><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+<form id="pf" method="post" enctype="multipart/form-data" class="stack">
+  <input type="hidden" name="photo_token" value="{{ token }}">
+  <input type="hidden" name="ocr_text" id="ocr_text" value="{{ f.get('ocr_text', '') }}">
+
+  <div class="card">
+    <h3>1 · Photo of the payout form</h3>
+    <input id="photo" type="file" name="photo" accept="image/*" capture="environment" {{ '' if token else 'required' }}>
+    {% if token %}<p class="hint">Your photo from the last attempt is kept, so there is no need to retake it. Choose a new one only to replace it.</p>{% endif %}
+    <img id="preview" class="preview" alt="Payout form preview" hidden>
+    <div id="ocrstatus" class="hint"></div>
+  </div>
+
+  <div class="card">
+    <h3>2 · Payout</h3>
+    <div class="fields">
+      <label>Machine that paid out <span class="auto" id="a_machine" hidden>from photo, check</span>
+        <select name="machine_id" id="machine_id" required>
+          <option value="">— select —</option>
+          {% for m in machines %}<option value="{{ m.id }}" {{ 'selected' if f.get('machine_id') == m.id|string }}>{{ m.code }}{% if m.location %} — {{ m.location }}{% endif %}</option>{% endfor %}
+        </select></label>
+      <label>Amount paid (R) <span class="auto" id="a_amount" hidden>from photo, check</span>
+        <input name="amount" id="amount" inputmode="decimal" required placeholder="e.g. 7500.00" value="{{ f.get('amount', '') }}"></label>
+      <label>Date and time paid
+        <input type="datetime-local" name="paid_at" required value="{{ f.get('paid_at') or now_local }}" max="{{ now_local }}"></label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>3 · Customer paid <span class="auto" id="a_client" hidden>from photo, check</span></h3>
+    <input type="hidden" name="client_id" id="client_id" value="{{ f.get('client_id', '') }}">
+    <div id="picked" class="pickedbox" hidden><b id="pickedtxt"></b> <button type="button" id="change" class="sm ghost">Change</button></div>
+    <div id="searchrow">
+      <label>Find an existing customer (name or ID number)
+        <input id="cq" autocomplete="off" placeholder="Start typing…"></label>
+      <div id="results" class="results"></div>
+    </div>
+    <div id="newbox" class="fields">
+      <label>New customer: full name<input name="new_name" id="new_name" value="{{ f.get('new_name', '') }}" placeholder="First name and surname"></label>
+      <label>Phone (optional)<input name="phone" type="tel" value="{{ f.get('phone', '') }}"></label>
+    </div>
+    <div id="idbox" class="fields">
+      <label>ID type
+        <select name="id_type" id="id_type">
+          <option value="sa_id" {{ 'selected' if f.get('id_type', 'sa_id') == 'sa_id' }}>South African ID</option>
+          <option value="passport" {{ 'selected' if f.get('id_type') == 'passport' }}>Passport</option>
+          <option value="other" {{ 'selected' if f.get('id_type') == 'other' }}>Other ID document</option>
+        </select></label>
+      <label>ID number<input name="id_number" id="id_number" inputmode="numeric" autocomplete="off" value="{{ f.get('id_number', '') }}"></label>
+      <label class="check" id="adultrow" hidden><input type="checkbox" name="adult_confirm" value="1" {{ 'checked' if f.get('adult_confirm') }}> I checked the customer is 18 or older</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>4 · Notes (optional)</h3>
+    <input name="notes" value="{{ f.get('notes', '') }}" placeholder="Anything worth recording">
+  </div>
+
+  {% if show_dup %}<label class="check dupbox"><input type="checkbox" name="dup_ok" value="1"> This is a different payout, save it anyway</label>{% endif %}
+  <button id="save" class="big">Save large payout</button>
+</form>
+
+<script>
+(function () {
+  const MIN = {{ lo }};
+  const $ = id => document.getElementById(id);
+  let picked = {{ picked|tojson }};
+
+  function renderCustomer() {
+    const has = picked && picked.has_id;
+    $('picked').hidden = !picked;
+    $('searchrow').hidden = !!picked;
+    $('newbox').hidden = !!picked;
+    $('idbox').hidden = !!has;
+    $('client_id').value = picked ? picked.id : '';
+    if (picked) $('pickedtxt').textContent = picked.name + (picked.has_id ? '  ·  ID ending ' + picked.id_last4 : '  ·  no ID on file, enter it below');
+    toggleAdult();
+  }
+  function toggleAdult() { $('adultrow').hidden = $('id_type').value === 'sa_id'; }
+  $('id_type').addEventListener('change', toggleAdult);
+  $('change').onclick = () => { picked = null; renderCustomer(); };
+
+  let timer;
+  $('cq').addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = $('cq').value.trim();
+    if (q.length < 2) { $('results').innerHTML = ''; return; }
+    timer = setTimeout(async () => {
+      const r = await fetch('/api/clients?q=' + encodeURIComponent(q));
+      const list = await r.json();
+      const box = $('results');
+      box.innerHTML = '';
+      list.forEach(c => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = c.name + (c.has_id ? '  ·  ID ending ' + c.id_last4 : '  ·  no ID on file');
+        b.onclick = () => { picked = c; box.innerHTML = ''; $('cq').value = ''; renderCustomer(); };
+        box.appendChild(b);
+      });
+      if (!list.length) box.textContent = 'No match. Fill in the new customer details below.';
+    }, 250);
+  });
+
+  // Shrink the photo on the phone before upload (faster on weak signal), and read it there too.
+  async function shrink(file) {
+    try {
+      const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      const s = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.82));
+      if (!blob || (s === 1 && blob.size >= file.size)) return file;
+      return new File([blob], 'payout-form.jpg', { type: 'image/jpeg' });
+    } catch (e) { return file; }
+  }
+
+  let tessLoading;
+  function loadTess() {
+    if (window.Tesseract) return Promise.resolve();
+    if (!tessLoading) tessLoading = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js';
+      s.onload = res; s.onerror = rej; document.head.appendChild(s);
+    });
+    return tessLoading;
+  }
+
+  function applySuggestions(s) {
+    const got = [];
+    if (s.machine_id && !$('machine_id').value) { $('machine_id').value = s.machine_id; $('a_machine').hidden = false; got.push('machine ' + s.machine_code); }
+    if (s.amount && !$('amount').value) { $('amount').value = s.amount.toFixed(2); $('a_amount').hidden = false; got.push('amount R ' + s.amount.toFixed(2)); }
+    if (s.client && !picked) { picked = s.client; renderCustomer(); $('a_client').hidden = false; got.push('customer ' + s.client.name); }
+    else if (s.id_number && !picked && !$('id_number').value) { $('id_number').value = s.id_number; $('id_type').value = 'sa_id'; toggleAdult(); got.push('ID number'); }
+    $('ocrstatus').textContent = got.length
+      ? 'Read from the photo: ' + got.join(', ') + '. Please check each one before saving.'
+      : 'Nothing could be read reliably from the photo (handwriting is often hard to read). Please fill in the details by hand.';
+  }
+
+  async function readPhoto(blob) {
+    const st = $('ocrstatus');
+    try {
+      st.textContent = 'Reading the form… you can keep filling in the details meanwhile.';
+      await loadTess();
+      const { data } = await Tesseract.recognize(blob, 'eng', {
+        logger: m => { if (m.status === 'recognizing text') st.textContent = 'Reading the form… ' + Math.round(m.progress * 100) + '%'; }
+      });
+      $('ocr_text').value = data.text || '';
+      const r = await fetch('/payouts/suggest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: data.text || '' }) });
+      applySuggestions(await r.json());
+    } catch (e) {
+      st.textContent = 'Could not read the photo automatically. Please fill in the details by hand.';
+    }
+  }
+
+  $('photo').addEventListener('change', async () => {
+    const f = $('photo').files[0];
+    if (!f) return;
+    $('ocrstatus').textContent = 'Preparing photo…';
+    const small = await shrink(f);
+    if (small !== f) { const dt = new DataTransfer(); dt.items.add(small); $('photo').files = dt.files; }
+    $('preview').src = URL.createObjectURL(small); $('preview').hidden = false;
+    readPhoto(small);
+  });
+
+  $('pf').addEventListener('submit', ev => {
+    const v = parseFloat(($('amount').value || '').replace(/[ ,]/g, ''));
+    if (!(v >= MIN)) { ev.preventDefault(); alert('Large payouts start at R ' + MIN.toLocaleString() + '.'); return; }
+    $('save').disabled = true; $('save').textContent = 'Saving…';
+  });
+
+  renderCustomer();
+})();
+</script>
+{% endblock %}
