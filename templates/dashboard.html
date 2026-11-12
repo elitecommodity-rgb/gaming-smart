@@ -18,6 +18,13 @@
 {% else %}<tr><td colspan="5">No machines yet — <a href="{{ url_for('machines') }}">add one</a>.</td></tr>{% endfor %}
 </table></div>
 
+<h2>Latest large payouts</h2>
+<div class="tablewrap"><table>
+<tr><th>#</th><th>Paid</th><th>Machine</th><th>Customer</th><th>Amount</th></tr>
+{% for p in bigrecent %}<tr><td><a href="{{ url_for('payout_detail', pid=p.id) }}">#{{ p.id }}</a></td><td>{{ p.paid_at }}</td><td><b>{{ p.code }}</b></td><td>{{ p.full_name }}</td><td>R {{ '{:,.2f}'.format(p.amount) }}</td></tr>
+{% else %}<tr><td colspan="5">No large payouts captured yet.</td></tr>{% endfor %}
+</table></div>
+
 <h2>Recent documents</h2>
 <div class="thumbs">
 {% for d in recent %}
