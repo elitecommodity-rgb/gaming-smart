@@ -1,24 +1,38 @@
-import os, io, sqlite3, uuid, datetime
+import os, io, re, json, time, hashlib, sqlite3, uuid, datetime
 from functools import wraps
 from flask import (Flask, g, render_template, request, redirect, url_for,
-                   session, send_from_directory, send_file, flash, abort)
+                   session, send_from_directory, send_file, flash, abort, jsonify)
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from PIL import Image, ImageOps
 import reports as rp
+import validators as vd
+
+try:
+    from zoneinfo import ZoneInfo
+    TZ = ZoneInfo(os.environ.get("APP_TZ", "Africa/Johannesburg"))
+except Exception:  # no tz database available: South Africa is UTC+2 all year
+    TZ = datetime.timezone(datetime.timedelta(hours=2))
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.environ.get("DATA_DIR", os.path.join(BASE, "data"))
 UPLOADS = os.path.join(DATA, "uploads")
+PENDING = os.path.join(UPLOADS, "pending")
 DB = os.path.join(DATA, "slotadmin.db")
 ALLOWED = {"jpg", "jpeg", "png", "webp", "heic", "pdf"}
 DOC_TYPES = ["ID document", "Proof of address", "Payout slip", "Machine meter photo",
-             "Cash-up sheet", "Incident report", "Other"]
-# staff = capture only | supervisor = + dashboard, reports, audit | admin = + users, machines
+             "Cash-up sheet", "Incident report", "Large payout form", "Other"]
+# staff = capture only | supervisor = + dashboard, reports, audit, void payouts | admin = + users, machines
 ROLES = {"staff": 1, "supervisor": 2, "admin": 3}
+LARGE_MIN = float(os.environ.get("LARGE_PAYOUT_MIN", "5000"))
+LARGE_MAX = float(os.environ.get("LARGE_PAYOUT_MAX", "1000000"))
+PAGE = 25
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-me-in-production")
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = bool(os.environ.get("RENDER"))
 ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")  # first-run admin; set via env var
 
@@ -31,7 +45,7 @@ CREATE TABLE IF NOT EXISTS machines(
   status TEXT DEFAULT 'active');
 CREATE TABLE IF NOT EXISTS clients(
   id INTEGER PRIMARY KEY, full_name TEXT NOT NULL, id_number TEXT, phone TEXT,
-  notes TEXT, created_at TEXT);
+  notes TEXT, created_at TEXT, id_type TEXT);
 CREATE TABLE IF NOT EXISTS entries(
   id INTEGER PRIMARY KEY, machine_id INTEGER NOT NULL, client_id INTEGER,
   entry_date TEXT NOT NULL, amount_in REAL DEFAULT 0, amount_out REAL DEFAULT 0,
@@ -40,25 +54,65 @@ CREATE TABLE IF NOT EXISTS documents(
   id INTEGER PRIMARY KEY, client_id INTEGER, machine_id INTEGER, entry_id INTEGER,
   doc_type TEXT, filename TEXT NOT NULL, original_name TEXT, uploaded_by TEXT,
   uploaded_at TEXT);
+CREATE TABLE IF NOT EXISTS payouts(
+  id INTEGER PRIMARY KEY, machine_id INTEGER NOT NULL, client_id INTEGER NOT NULL,
+  amount REAL NOT NULL, paid_at TEXT NOT NULL, entry_id INTEGER, filename TEXT NOT NULL,
+  file_hash TEXT UNIQUE NOT NULL, ocr_text TEXT, flags TEXT, notes TEXT,
+  captured_by TEXT, created_at TEXT, status TEXT NOT NULL DEFAULT 'valid',
+  void_reason TEXT, voided_by TEXT, voided_at TEXT);
 CREATE TABLE IF NOT EXISTS audit(
   id INTEGER PRIMARY KEY, at TEXT, user TEXT, action TEXT, detail TEXT);
+CREATE INDEX IF NOT EXISTS idx_entries_date ON entries(entry_date);
+CREATE INDEX IF NOT EXISTS idx_entries_machine ON entries(machine_id, entry_date);
+CREATE INDEX IF NOT EXISTS idx_entries_client ON entries(client_id, entry_date);
+CREATE INDEX IF NOT EXISTS idx_docs_client ON documents(client_id);
+CREATE INDEX IF NOT EXISTS idx_clients_idnum ON clients(id_number);
+CREATE INDEX IF NOT EXISTS idx_payouts_paid ON payouts(paid_at);
+CREATE INDEX IF NOT EXISTS idx_payouts_machine ON payouts(machine_id, amount, paid_at);
+CREATE INDEX IF NOT EXISTS idx_payouts_client ON payouts(client_id);
 """
 
 
-def now(): return datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+def local_now():
+    return datetime.datetime.now(TZ).replace(tzinfo=None)
+
+
+def local_today():
+    return local_now().date()
+
+
+def now():
+    return local_now().strftime("%Y-%m-%d %H:%M")
+
+
+_ready = False
+
+
+def init_db(conn):
+    conn.executescript(SCHEMA)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(clients)")}
+    if "id_type" not in cols:
+        try:
+            conn.execute("ALTER TABLE clients ADD COLUMN id_type TEXT")
+        except sqlite3.OperationalError:
+            pass
+    if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
+        conn.execute("INSERT OR IGNORE INTO users(username,pw_hash,role,active,created_at) VALUES(?,?,?,?,?)",
+                     (ADMIN_USER, generate_password_hash(ADMIN_PASSWORD), "admin", 1, now()))
+    conn.commit()
 
 
 def db():
+    global _ready
     if "db" not in g:
-        os.makedirs(UPLOADS, exist_ok=True)
+        os.makedirs(PENDING, exist_ok=True)
         g.db = sqlite3.connect(DB, timeout=30)
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA journal_mode=WAL")
-        g.db.executescript(SCHEMA)
-        if g.db.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
-            g.db.execute("INSERT OR IGNORE INTO users(username,pw_hash,role,active,created_at) VALUES(?,?,?,?,?)",
-                         (ADMIN_USER, generate_password_hash(ADMIN_PASSWORD), "admin", 1, now()))
-            g.db.commit()
+        g.db.execute("PRAGMA synchronous=NORMAL")
+        if not _ready:  # schema, migrations and first admin are set up once per process
+            init_db(g.db)
+            _ready = True
     return g.db
 
 
@@ -133,6 +187,13 @@ def logout():
     return redirect(url_for("login"))
 
 
+def _range(args):
+    """Report date range, defaulting to this month in local time."""
+    t = local_today()
+    return rp.parse_range({"start": args.get("start") or t.replace(day=1).isoformat(),
+                           "end": args.get("end") or t.isoformat()})
+
+
 # ---------------------------------------------------------------- dashboard
 @app.route("/")
 @require("staff")
@@ -140,19 +201,22 @@ def dashboard():
     if ROLES[g.role] < ROLES["supervisor"]:
         return redirect(url_for("entries"))
     d = db()
-    today = datetime.date.today().isoformat()
+    today = local_today().isoformat()
     month = today[:7]
 
     def tot(where, args=()):
         r = d.execute(f"SELECT COALESCE(SUM(amount_in),0) i, COALESCE(SUM(amount_out),0) o "
                       f"FROM entries WHERE {where}", args).fetchone()
         return {"in": r["i"], "out": r["o"], "net": r["i"] - r["o"]}
+    big = d.execute("SELECT COUNT(*) n, COALESCE(SUM(amount),0) t FROM payouts "
+                    "WHERE status='valid' AND paid_at LIKE ?", (month + "%",)).fetchone()
     stats = {
         "today": tot("entry_date=?", (today,)),
         "month": tot("entry_date LIKE ?", (month + "%",)),
         "machines": d.execute("SELECT COUNT(*) FROM machines WHERE status='active'").fetchone()[0],
         "clients": d.execute("SELECT COUNT(*) FROM clients").fetchone()[0],
         "docs": d.execute("SELECT COUNT(*) FROM documents").fetchone()[0],
+        "big_n": big["n"], "big_total": big["t"],
     }
     per_machine = d.execute("""
         SELECT m.code, m.location, COALESCE(SUM(e.amount_in),0) i,
@@ -196,7 +260,7 @@ def clients():
         log("client_add", request.form["full_name"]); d.commit()
         return redirect(url_for("client_detail", cid=cur.lastrowid))
     q = request.args.get("q", "")
-    rows = d.execute("SELECT * FROM clients WHERE full_name LIKE ? OR id_number LIKE ? OR phone LIKE ? ORDER BY full_name",
+    rows = d.execute("SELECT * FROM clients WHERE full_name LIKE ? OR id_number LIKE ? OR phone LIKE ? ORDER BY full_name LIMIT 300",
                      (f"%{q}%",) * 3).fetchall()
     return render_template("clients.html", rows=rows, q=q)
 
@@ -210,6 +274,22 @@ def client_detail(cid):
     ents = d.execute("""SELECT e.*, m.code FROM entries e JOIN machines m ON m.id=e.machine_id
                         WHERE client_id=? ORDER BY entry_date DESC, e.id DESC""", (cid,)).fetchall()
     return render_template("client_detail.html", c=c, docs=docs, ents=ents, types=DOC_TYPES)
+
+
+@app.route("/api/clients")
+@require("staff")
+def api_clients():
+    q = request.args.get("q", "").strip()
+    if len(q) < 2:
+        return jsonify([])
+    rows = db().execute("""SELECT id, full_name, id_number FROM clients
+        WHERE full_name LIKE ? OR id_number LIKE ? ORDER BY full_name LIMIT 8""",
+                        (f"%{q}%", f"%{q}%")).fetchall()
+    out = []
+    for r in rows:
+        n = vd.clean_id(r["id_number"])
+        out.append({"id": r["id"], "name": r["full_name"], "has_id": bool(n), "id_last4": n[-4:] if n else ""})
+    return jsonify(out)
 
 
 # ------------------------------------------------------------------- entries
@@ -237,7 +317,7 @@ def entries():
     return render_template("entries.html", rows=rows,
         machines=d.execute("SELECT * FROM machines WHERE status='active' ORDER BY code").fetchall(),
         clients=d.execute("SELECT id,full_name FROM clients ORDER BY full_name").fetchall(),
-        today=datetime.date.today().isoformat())
+        today=local_today().isoformat())
 
 
 def save_upload(f, doc_type, client_id=None, machine_id=None, entry_id=None):
@@ -279,7 +359,9 @@ def documents():
 @app.route("/files/<name>")
 @require("staff")
 def files(name):
-    return send_from_directory(UPLOADS, name)
+    resp = send_from_directory(UPLOADS, name)
+    resp.headers["Cache-Control"] = "private, max-age=86400"
+    return resp
 
 
 @app.route("/audit")
@@ -288,11 +370,308 @@ def audit():
     return render_template("audit.html", rows=db().execute("SELECT * FROM audit ORDER BY id DESC LIMIT 300").fetchall())
 
 
+# ------------------------------------------------------------ large payouts
+def process_image(data):
+    """Validate the upload is a real photo, fix its rotation, shrink it and make a thumbnail."""
+    try:
+        im = Image.open(io.BytesIO(data))
+        im.load()
+    except Exception:
+        raise ValueError("That file is not a readable photo - please retake it")
+    im = ImageOps.exif_transpose(im).convert("RGB")
+    if min(im.size) < 300:
+        raise ValueError("The photo is too small to read - please retake it closer to the form")
+    im.thumbnail((1800, 1800))
+    full = io.BytesIO()
+    im.save(full, "JPEG", quality=82, optimize=True)
+    th = im.copy()
+    th.thumbnail((360, 360))
+    t = io.BytesIO()
+    th.save(t, "JPEG", quality=70, optimize=True)
+    return full.getvalue(), t.getvalue()
+
+
+def _pending_path(token):
+    return os.path.join(PENDING, token + ".jpg")
+
+
+def _clean_pending():
+    cutoff = time.time() - 86400
+    try:
+        for fn in os.listdir(PENDING):
+            p = os.path.join(PENDING, fn)
+            if os.path.getmtime(p) < cutoff:
+                os.remove(p)
+    except OSError:
+        pass
+
+
+def _find_client_by_id(d, id_number):
+    return d.execute("SELECT * FROM clients WHERE REPLACE(REPLACE(id_number,' ',''),'-','')=?",
+                     (id_number,)).fetchone()
+
+
+@app.route("/payouts/suggest", methods=["POST"])
+@require("staff")
+def payout_suggest():
+    text = (request.get_json(silent=True) or {}).get("text", "")[:6000]
+    return jsonify(vd.match_text(db(), text, LARGE_MIN, LARGE_MAX))
+
+
+@app.route("/payouts")
+@require("staff")
+def payouts():
+    d = db()
+    a = request.args
+    where, args = ["1=1"], []
+    start, end = a.get("start", ""), a.get("end", "")
+    if start:
+        where.append("substr(p.paid_at,1,10) >= ?"); args.append(start)
+    if end:
+        where.append("substr(p.paid_at,1,10) <= ?"); args.append(end)
+    if a.get("machine", "").isdigit():
+        where.append("p.machine_id = ?"); args.append(int(a["machine"]))
+    q = a.get("q", "").strip()
+    if q:
+        where.append("(c.full_name LIKE ? OR c.id_number LIKE ?)"); args += [f"%{q}%", f"%{q}%"]
+    if a.get("status") in ("valid", "void"):
+        where.append("p.status = ?"); args.append(a["status"])
+    cond = " AND ".join(where)
+    base = "FROM payouts p JOIN machines m ON m.id=p.machine_id JOIN clients c ON c.id=p.client_id WHERE " + cond
+    total = d.execute("SELECT COUNT(*) " + base, args).fetchone()[0]
+    page = max(1, int(a["page"])) if a.get("page", "").isdigit() else 1
+    rows = d.execute("SELECT p.*, m.code, c.full_name " + base +
+                     " ORDER BY p.paid_at DESC, p.id DESC LIMIT ? OFFSET ?",
+                     args + [PAGE, (page - 1) * PAGE]).fetchall()
+    month = local_today().isoformat()[:7]
+    k = d.execute("SELECT COUNT(*) n, COALESCE(SUM(amount),0) t FROM payouts WHERE status='valid' AND paid_at LIKE ?",
+                  (month + "%",)).fetchone()
+    pages = max(1, -(-total // PAGE))
+    qs = {x: y for x, y in a.items() if x != "page" and y}
+    return render_template("payouts.html", rows=rows, total=total, page=page, pages=pages, qs=qs,
+                           k=k, lo=LARGE_MIN, a=a,
+                           machines=d.execute("SELECT id, code FROM machines ORDER BY code").fetchall())
+
+
+@app.route("/payouts/new", methods=["GET", "POST"])
+@require("staff")
+def payout_new():
+    d = db()
+    machines_ = d.execute("SELECT id, code, location FROM machines WHERE status='active' ORDER BY code").fetchall()
+    ctx = dict(machines=machines_, lo=LARGE_MIN, errors=[], token="", show_dup=False, picked=None,
+               now_local=local_now().strftime("%Y-%m-%dT%H:%M"))
+    if request.method == "GET":
+        return render_template("payout_new.html", f={}, **ctx)
+
+    f, errors = request.form, []
+    # ---- photo (new upload, or the one kept from a previous failed attempt)
+    token = f.get("photo_token", "")
+    up = request.files.get("photo")
+    data = None
+    if up and up.filename:
+        data = up.read()
+    elif re.fullmatch(r"[0-9a-f]{32}", token) and os.path.exists(_pending_path(token)):
+        with open(_pending_path(token), "rb") as fh:
+            data = fh.read()
+    full = thumb = None
+    if not data:
+        errors.append("A photo of the signed payout form is required")
+    else:
+        try:
+            full, thumb = process_image(data)
+        except ValueError as ex:
+            errors.append(str(ex))
+
+    # ---- amount and time
+    try:
+        amount = round(float(re.sub(r"[ ,]", "", f.get("amount", ""))), 2)
+    except ValueError:
+        amount = None
+    if amount is None:
+        errors.append("Enter the payout amount")
+    elif amount < LARGE_MIN:
+        errors.append(f"Large payouts start at R {LARGE_MIN:,.0f}. Capture smaller wins on the Wins / Losses page")
+    elif amount > LARGE_MAX:
+        errors.append(f"R {amount:,.2f} looks wrong (limit R {LARGE_MAX:,.0f}) - please check the amount")
+    paid = None
+    try:
+        paid = datetime.datetime.fromisoformat(f.get("paid_at", ""))
+    except ValueError:
+        errors.append("Enter the date and time of the payout")
+    if paid:
+        nowl = local_now()
+        if paid > nowl + datetime.timedelta(minutes=5):
+            errors.append("The payout time cannot be in the future")
+        elif (nowl - paid).days > 14 and ROLES[g.role] < ROLES["supervisor"]:
+            errors.append("Payouts older than 14 days must be captured by a supervisor")
+
+    # ---- machine
+    mid = f.get("machine_id", "")
+    m = d.execute("SELECT * FROM machines WHERE id=? AND status='active'", (mid if mid.isdigit() else 0,)).fetchone()
+    if not m:
+        errors.append("Select the machine that paid out")
+
+    # ---- customer and ID verification
+    client = None
+    cid = f.get("client_id", "")
+    if cid:
+        client = d.execute("SELECT * FROM clients WHERE id=?", (cid if cid.isdigit() else 0,)).fetchone()
+        if not client:
+            errors.append("The selected customer was not found")
+    id_type = f.get("id_type", "sa_id")
+    id_number = vd.clean_id(f.get("id_number", ""))
+    if client is not None and vd.clean_id(client["id_number"]):
+        id_number = vd.clean_id(client["id_number"])
+        id_type = client["id_type"] or ("sa_id" if id_number.isdigit() and len(id_number) == 13 else "other")
+    new_name = " ".join(f.get("new_name", "").split())
+    if client is None and len(new_name.split()) < 2:
+        errors.append("Enter the customer's full name (first name and surname)")
+    if not id_number:
+        errors.append("The customer's ID number is required for a large payout")
+    elif id_type == "sa_id":
+        ok, age, msg = vd.sa_id_info(id_number, local_today())
+        if not ok:
+            errors.append(msg)
+        elif age < 18:
+            errors.append(f"The customer is {age} years old - payouts are only for customers aged 18 or older")
+    else:
+        if len(id_number) < 5:
+            errors.append("Enter the passport / ID number as it appears on the document")
+        if not f.get("adult_confirm"):
+            errors.append("Confirm that you checked the customer is 18 or older")
+    if client is None and id_number and not errors:
+        client = _find_client_by_id(d, id_number)  # same ID already on file: reuse that customer
+
+    # ---- duplicates
+    show_dup = False
+    fhash = hashlib.sha256(full).hexdigest() if full else None
+    if fhash and not errors:
+        prev = d.execute("SELECT id FROM payouts WHERE file_hash=?", (fhash,)).fetchone()
+        if prev:
+            errors.append(f"This exact photo was already captured as payout #{prev['id']}")
+        else:
+            dup = d.execute("""SELECT id FROM payouts WHERE status='valid' AND machine_id=? AND amount=?
+                AND ABS(julianday(?) - julianday(paid_at)) < 1""",
+                            (m["id"], amount, paid.strftime("%Y-%m-%d %H:%M"))).fetchone()
+            if dup and not f.get("dup_ok"):
+                show_dup = True
+                errors.append(f"Payout #{dup['id']} on {m['code']} for the same amount was captured in the last 24 hours. "
+                              "If this is a different payout, tick the box below and save again")
+
+    if errors:
+        token_out = token if (re.fullmatch(r"[0-9a-f]{32}", token) and os.path.exists(_pending_path(token))) else ""
+        if full and not token_out:  # keep the photo so staff do not have to retake it
+            token_out = uuid.uuid4().hex
+            with open(_pending_path(token_out), "wb") as fh:
+                fh.write(full)
+        picked = None
+        if client is not None:
+            n = vd.clean_id(client["id_number"])
+            picked = {"id": client["id"], "name": client["full_name"], "has_id": bool(n),
+                      "id_last4": n[-4:] if n else ""}
+        ctx.update(errors=errors, token=token_out, show_dup=show_dup, picked=picked)
+        return render_template("payout_new.html", f=f, **ctx), 400
+
+    # ---- cross-check against what the photo says (information only, not blocking)
+    ocr_text = (f.get("ocr_text") or "")[:4000]
+    flags = []
+    if ocr_text.strip():
+        sug = vd.match_text(d, ocr_text, LARGE_MIN, LARGE_MAX)
+        if sug["machine_id"] and sug["machine_id"] != m["id"]:
+            flags.append(f"Photo reads machine {sug['machine_code']}")
+        if sug["amount"] and abs(sug["amount"] - amount) > 0.5:
+            flags.append(f"Photo reads R {sug['amount']:,.2f}")
+        if sug["id_number"] and sug["id_number"] != id_number:
+            flags.append("ID number differs from photo")
+        elif sug["client"] and client and sug["client"]["id"] != client["id"]:
+            flags.append(f"Photo matches customer {sug['client']['name']}")
+    else:
+        flags.append("Entered manually - photo not machine-read")
+
+    # ---- save: files first, then one database transaction
+    fname = uuid.uuid4().hex + ".jpg"
+    os.makedirs(UPLOADS, exist_ok=True)
+    with open(os.path.join(UPLOADS, fname), "wb") as fh:
+        fh.write(full)
+    with open(os.path.join(UPLOADS, "t_" + fname), "wb") as fh:
+        fh.write(thumb)
+    try:
+        if client is None:
+            cur = d.execute("INSERT INTO clients(full_name,id_number,phone,notes,created_at,id_type) VALUES(?,?,?,?,?,?)",
+                            (new_name, id_number, f.get("phone", "").strip(), "", now(), id_type))
+            client_id = cur.lastrowid
+        else:
+            client_id = client["id"]
+            if not vd.clean_id(client["id_number"]):
+                d.execute("UPDATE clients SET id_number=?, id_type=? WHERE id=?", (id_number, id_type, client_id))
+        cur = d.execute("""INSERT INTO entries(machine_id,client_id,entry_date,amount_in,amount_out,notes,captured_by,created_at)
+            VALUES(?,?,?,?,?,?,?,?)""", (m["id"], client_id, paid.date().isoformat(), 0, amount,
+                                         "Large payout", session["user"], now()))
+        entry_id = cur.lastrowid
+        cur = d.execute("""INSERT INTO payouts(machine_id,client_id,amount,paid_at,entry_id,filename,file_hash,ocr_text,
+            flags,notes,captured_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (m["id"], client_id, amount, paid.strftime("%Y-%m-%d %H:%M"), entry_id, fname, fhash,
+                         ocr_text, "; ".join(flags), f.get("notes", "").strip(), session["user"], now()))
+        pid = cur.lastrowid
+        d.execute("UPDATE entries SET notes=? WHERE id=?", (f"Large payout #{pid}", entry_id))
+        d.execute("""INSERT INTO documents(client_id,machine_id,entry_id,doc_type,filename,original_name,uploaded_by,uploaded_at)
+            VALUES(?,?,?,?,?,?,?,?)""", (client_id, m["id"], entry_id, "Large payout form", fname,
+                                          "payout-form.jpg", session["user"], now()))
+        log("payout_add", f"#{pid} {m['code']} R{amount:,.2f}")
+        d.commit()
+    except Exception:
+        d.rollback()
+        for p in (fname, "t_" + fname):
+            try:
+                os.remove(os.path.join(UPLOADS, p))
+            except OSError:
+                pass
+        raise
+    if re.fullmatch(r"[0-9a-f]{32}", token):
+        try:
+            os.remove(_pending_path(token))
+        except OSError:
+            pass
+    _clean_pending()
+    flash(f"Large payout #{pid} saved: R {amount:,.2f} on {m['code']}")
+    return redirect(url_for("payout_detail", pid=pid))
+
+
+@app.route("/payouts/<int:pid>")
+@require("staff")
+def payout_detail(pid):
+    p = db().execute("""SELECT p.*, m.code, m.location, c.full_name, c.id_number, c.phone, c.id_type
+        FROM payouts p JOIN machines m ON m.id=p.machine_id JOIN clients c ON c.id=p.client_id
+        WHERE p.id=?""", (pid,)).fetchone() or abort(404)
+    return render_template("payout_detail.html", p=p)
+
+
+@app.route("/payouts/<int:pid>/void", methods=["POST"])
+@require("supervisor")
+def payout_void(pid):
+    d = db()
+    p = d.execute("SELECT * FROM payouts WHERE id=?", (pid,)).fetchone() or abort(404)
+    reason = " ".join(request.form.get("reason", "").split())
+    if p["status"] != "valid":
+        flash("This payout is already voided")
+    elif len(reason) < 5:
+        flash("Enter a reason (at least 5 characters) to void a payout")
+    else:
+        d.execute("UPDATE payouts SET status='void', void_reason=?, voided_by=?, voided_at=? WHERE id=?",
+                  (reason, session["user"], now(), pid))
+        if p["entry_id"]:
+            d.execute("DELETE FROM entries WHERE id=?", (p["entry_id"],))  # takes it out of the reports
+        log("payout_void", f"#{pid}: {reason}")
+        d.commit()
+        flash(f"Payout #{pid} voided and removed from the reports")
+    return redirect(url_for("payout_detail", pid=pid))
+
+
 # ------------------------------------------------------------------- reports
 @app.route("/reports")
 @require("supervisor")
 def reports():
-    s, e = rp.parse_range(request.args)
+    s, e = _range(request.args)
     d = db()
     reps = [rp.client_report(d, s, e), rp.machine_report(d, s, e), rp.business_report(d, s, e)]
     return render_template("reports.html", reps=reps, charts=[rp.chart_data(r) for r in reps],
@@ -304,7 +683,7 @@ def reports():
 def export_report(kind, fmt):
     if kind not in rp.BUILDERS or fmt not in rp.EXPORTERS:
         abort(404)
-    s, e = rp.parse_range(request.args)
+    s, e = _range(request.args)
     d = db()
     rep = rp.BUILDERS[kind](d, s, e)
     fn, mime = rp.EXPORTERS[fmt]
