@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>{{ c.full_name }}</h1>
+<div class="grid">
+  <div class="card"><div class="k">ID number</div><div class="v" style="font-size:17px">{{ c.id_number or '—' }}</div></div>
+  <div class="card"><div class="k">Phone</div><div class="v" style="font-size:17px">{{ c.phone or '—' }}</div></div>
+  <div class="card"><div class="k">Notes</div><div style="margin-top:4px">{{ c.notes or '—' }}</div></div>
+</div>
+
+<h2>Capture document</h2>
+<form class="box" method="post" action="{{ url_for('documents') }}" enctype="multipart/form-data">
+  <input type="hidden" name="client_id" value="{{ c.id }}">
+  <input type="hidden" name="next" value="{{ url_for('client_detail', cid=c.id) }}">
+  <label>Document type<select name="doc_type">{% for t in types %}<option>{{ t }}</option>{% endfor %}</select></label>
+  <label>Take photo (phone camera)<input type="file" name="files" accept="image/*" capture="environment"></label>
+  <label>…or choose files<input type="file" name="files" accept="image/*,application/pdf" multiple></label>
+  <button>Upload</button>
+</form>
+
+<h2>Documents ({{ docs|length }})</h2>
+<div class="thumbs">
+{% for d in docs %}
+  <a class="thumb" href="{{ url_for('files', name=d.filename) }}" target="_blank">
+    {% if d.filename.endswith('.pdf') %}<div class="pdf">PDF</div>{% else %}<img src="{{ url_for('files', name=d.filename) }}" loading="lazy">{% endif %}
+    <div class="m">{{ d.doc_type }}<br>{{ d.uploaded_at }}</div>
+  </a>
+{% else %}<div class="card">No documents yet.</div>{% endfor %}
+</div>
+
+<h2>Play history</h2>
+<div class="tablewrap"><table>
+<tr><th>Date</th><th>Machine</th><th>In</th><th>Out</th><th>Notes</th></tr>
+{% for e in ents %}<tr><td>{{ e.entry_date }}</td><td>{{ e.code }}</td><td>R {{ '{:,.2f}'.format(e.amount_in) }}</td><td>R {{ '{:,.2f}'.format(e.amount_out) }}</td><td>{{ e.notes }}</td></tr>
+{% else %}<tr><td colspan="5">No entries linked to this client.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}
