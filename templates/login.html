@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 {% block body %}
 <div class="login card">
-  <div class="logo">GAMING SMART</div>
-  <p class="hint" style="margin-top:0">Gaming floor administration</p>
-  {% for m in get_flashed_messages() %}<div class="flash">{{ m }}</div>{% endfor %}
-  <form method="post" style="display:grid;gap:10px">
+  <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="4" width="26" height="24" rx="5" fill="#16303F" stroke="#E8C547" stroke-width="1.5"/><rect x="7" y="10" width="5" height="12" rx="1.2" fill="#B28029"/><rect x="13.5" y="8" width="5" height="16" rx="1.2" fill="#E8C547"/><rect x="20" y="11" width="5" height="10" rx="1.2" fill="#5EEAD4"/></svg>
+  <div class="eyebrow">Gaming Smart</div>
+  <h1>Admin <em>access</em></h1>
+  <p class="hint" style="margin-top:0">Sign in to see machine performance, client records and payouts.</p>
+  <form method="post" style="display:grid;gap:12px">
     <label>Username<input name="username" autofocus required autocomplete="username"></label>
     <label>Password<input name="password" type="password" required autocomplete="current-password"></label>
-    <button class="big">Sign in</button>
+    <button class="big">Unlock</button>
   </form>
 </div>
 {% endblock %}
