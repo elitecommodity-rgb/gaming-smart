@@ -32,3 +32,10 @@ button,.btn{background:var(--gold);color:#1a1405;border:0;border-radius:6px;padd
 .login{max-width:340px;margin:12vh auto}
 .pill{display:inline-block;padding:1px 8px;border-radius:99px;background:var(--line);font-size:12px;color:var(--mute)}
 .tablewrap{overflow-x:auto}
+.rep{margin-top:30px}
+.rephead{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.rephead h2{margin:0}
+.dl{display:flex;gap:6px;align-items:center;color:var(--mute);font-size:13px}
+a.btn{display:inline-block;color:#1a1405}
+.sm{padding:5px 10px;font-size:13px}
+.chartbox{height:320px;margin-bottom:12px;position:relative}
