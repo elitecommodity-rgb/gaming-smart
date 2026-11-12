@@ -2,11 +2,20 @@
 {% block body %}
 <h1>{{ c.full_name }}</h1>
 <div class="grid">
-  <div class="card"><div class="k">ID number</div><div class="v" style="font-size:17px">{{ c.id_number or '—' }}</div></div>
+  <div class="card"><div class="k">ID number</div><div class="v" style="font-size:17px">{{ mask_id(c.id_number) or '—' }}</div></div>
   <div class="card"><div class="k">Phone</div><div class="v" style="font-size:17px">{{ c.phone or '—' }}</div></div>
   <div class="card"><div class="k">Notes</div><div style="margin-top:4px">{{ c.notes or '—' }}</div></div>
 </div>
 
+{% if c.anonymised_at %}<p class="hint">Personal details removed on {{ c.anonymised_at }}. Financial records are kept without a name.</p>
+{% else %}
+<div class="card" style="margin-top:12px"><h3>Privacy (POPIA)</h3>
+{% if c.consent_at %}<p>Privacy notice given on {{ c.consent_at }}{% if c.consent_by %} by {{ c.consent_by }}{% endif %}.</p>
+{% else %}<form method="post" action="{{ url_for('client_consent', cid=c.id) }}" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="neg">No record that the client was given the privacy notice.</span>
+<label class="check"><input type="checkbox" name="notice" value="1" required> Given</label><button class="sm">Record</button></form>{% endif %}
+<p style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 0">{% if can('supervisor') %}<a class="btn ghost sm" href="{{ url_for('client_export', cid=c.id) }}">Download this person's data</a>{% endif %}
+{% if can('admin') %}<form class="inline" method="post" action="{{ url_for('client_anonymise', cid=c.id) }}"><button class="sm ghost" onclick="return confirm('Remove this person\'s name, ID, phone and ID photos? This cannot be undone.')">Remove personal details</button></form>{% endif %}</p></div>
+{% endif %}
 <h2>Capture document</h2>
 <form class="box" method="post" action="{{ url_for('documents') }}" enctype="multipart/form-data">
   <input type="hidden" name="client_id" value="{{ c.id }}">
