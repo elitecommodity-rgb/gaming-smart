@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% macro money(v) %}<span class="{{ 'pos' if v >= 0 else 'neg' }}">R {{ '{:,.2f}'.format(v) }}</span>{% endmacro %}
+{% block body %}
+<h1>Dashboard</h1>
+<div class="grid">
+  <div class="card"><div class="k">Net today</div><div class="v">{{ money(s.today.net) }}</div><div class="s">In R {{ '{:,.0f}'.format(s.today.in) }} · Out R {{ '{:,.0f}'.format(s.today.out) }}</div></div>
+  <div class="card"><div class="k">Net this month</div><div class="v">{{ money(s.month.net) }}</div><div class="s">In R {{ '{:,.0f}'.format(s.month.in) }} · Out R {{ '{:,.0f}'.format(s.month.out) }}</div></div>
+  <div class="card"><div class="k">Active machines</div><div class="v">{{ s.machines }}</div></div>
+  <div class="card"><div class="k">Clients</div><div class="v">{{ s.clients }}</div></div>
+  <div class="card"><div class="k">Documents on file</div><div class="v">{{ s.docs }}</div></div>
+</div>
+
+<h2>Machine performance — this month</h2>
+<div class="tablewrap"><table>
+<tr><th>Machine</th><th>Location</th><th>In</th><th>Out</th><th>Net</th></tr>
+{% for r in pm %}<tr><td><b>{{ r.code }}</b></td><td>{{ r.location }}</td><td>R {{ '{:,.2f}'.format(r.i) }}</td><td>R {{ '{:,.2f}'.format(r.o) }}</td><td>{{ money(r.i - r.o) }}</td></tr>
+{% else %}<tr><td colspan="5">No machines yet — <a href="{{ url_for('machines') }}">add one</a>.</td></tr>{% endfor %}
+</table></div>
+
+<h2>Recent documents</h2>
+<div class="thumbs">
+{% for d in recent %}
+  <a class="thumb" href="{{ url_for('files', name=d.filename) }}" target="_blank">
+    {% if d.filename.endswith('.pdf') %}<div class="pdf">PDF</div>{% else %}<img src="{{ url_for('files', name=d.filename) }}" loading="lazy">{% endif %}
+    <div class="m">{{ d.doc_type }}<br>{{ d.full_name or '—' }}</div>
+  </a>
+{% else %}<div class="card">Nothing uploaded yet.</div>{% endfor %}
+</div>
+{% endblock %}
