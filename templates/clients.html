@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Clients</h1>
+<form class="box" method="post">
+  <label>Full name<input name="full_name" required></label>
+  <label>ID number<input name="id_number"></label>
+  <label>Phone<input name="phone" type="tel"></label>
+  <label>Notes<input name="notes"></label>
+  <button>Add client</button>
+</form>
+<h2>Search</h2>
+<form method="get" style="margin-bottom:10px"><input name="q" value="{{ q }}" placeholder="Name, ID or phone" style="width:100%"></form>
+<div class="tablewrap"><table>
+<tr><th>Name</th><th>ID number</th><th>Phone</th><th>Added</th></tr>
+{% for r in rows %}<tr><td><a href="{{ url_for('client_detail', cid=r.id) }}">{{ r.full_name }}</a></td><td>{{ r.id_number }}</td><td>{{ r.phone }}</td><td>{{ r.created_at }}</td></tr>
+{% else %}<tr><td colspan="4">No clients found.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}
