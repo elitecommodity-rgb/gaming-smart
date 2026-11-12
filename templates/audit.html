@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Audit trail</h1>
+<div class="tablewrap"><table>
+<tr><th>When</th><th>User</th><th>Action</th><th>Detail</th></tr>
+{% for r in rows %}<tr><td>{{ r.at }}</td><td>{{ r.user }}</td><td>{{ r.action }}</td><td>{{ r.detail }}</td></tr>
+{% else %}<tr><td colspan="4">Nothing logged yet.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}
