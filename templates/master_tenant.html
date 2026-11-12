@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block body %}
+{% set live = t.status == 'active' and not t.overdue_block %}
+<div class="viewhead"><div><div class="eyebrow">Client account</div><h1>{{ t.name }} {% if live %}<span class="pill ok">on</span>{% else %}<span class="pill bad">off</span>{% endif %}</h1>
+<div class="sub">{{ t.plan or 'No plan' }} · paid until {{ t.paid_until or 'not set' }}{% if t.overdue_block %} · <span class="neg">payment overdue, switched off automatically</span>{% endif %}</div></div>
+<a class="btn ghost sm" href="{{ url_for('master') }}">← All clients</a></div>
+<div class="ov">
+  <div class="card hero">
+    <div class="k">Switch</div>
+    <form method="post" action="{{ url_for('master_toggle', tid=t.id) }}" style="display:grid;gap:10px;margin-top:10px">
+      {% if t.status == 'active' %}<input type="hidden" name="to" value="suspended">
+        <label>Reason shown to the client<input name="reason" value="{{ t.suspended_reason or 'Account switched off for non-payment.' }}"></label>
+        <button class="ghost" onclick="return confirm('Switch this client off?')">Turn this client off</button>
+      {% else %}<input type="hidden" name="to" value="active"><p class="hint">{{ t.suspended_reason }}</p><button>Turn this client on</button>{% endif %}
+    </form>
+    <div class="k" style="margin-top:22px">Record a payment</div>
+    <form method="post" action="{{ url_for('master_paid', tid=t.id) }}" style="display:flex;gap:8px;margin-top:8px;align-items:end">
+      <label style="flex:1">Months paid<select name="months">{% for m in (1,2,3,6,12) %}<option>{{ m }}</option>{% endfor %}</select></label><button>Extend and switch on</button></form>
+    <div class="k" style="margin-top:22px">Reset a password on request</div>
+    <form method="post" action="{{ url_for('master_reset', tid=t.id) }}" style="display:flex;gap:8px;margin-top:8px;align-items:end">
+      <label style="flex:1">Their username<input name="username" value="admin" required></label><button>Create temporary password</button></form>
+    <p class="hint">A temporary password is shown once here. It is sent to the client's app the next time it checks in, which replaces their current password. Give it to the client and ask them to change it under Administration.</p>
+    {% for r in resets %}<div class="listrow"><div><b>{{ r.username }}</b><span class="hint">{{ r.created_at[:16] }} by {{ r.requested_by }}</span></div><div>{% if r.status == 'applied' %}<span class="pill ok">applied {{ (r.applied_at or '')[:16] }}</span>{% else %}<span class="pill warn">waiting for the client app</span>{% endif %}</div></div>{% endfor %}
+  </div>
+  <div class="card">
+    <h3>Mirror of the client installation</h3>
+    {% if t.last_seen %}<p class="hint">Last check-in {{ t.last_seen[:16] }} · {{ t.version or '' }}. Only totals are reported, never names, IDs or photos.</p>
+    <div class="grid" style="margin-top:8px">
+      <div class="card"><div class="k">Machines</div><div class="v">{{ st.get('machines', '—') }}</div></div>
+      <div class="card"><div class="k">Clients</div><div class="v">{{ st.get('clients', '—') }}</div></div>
+      <div class="card"><div class="k">Users</div><div class="v">{{ st.get('users', '—') }}</div></div>
+      <div class="card"><div class="k">Turnover (month)</div><div class="v">{{ 'R{:,.0f}'.format(st.get('month_in', 0)).replace(',', ' ') }}</div></div>
+      <div class="card"><div class="k">Payouts (month)</div><div class="v">{{ 'R{:,.0f}'.format(st.get('month_out', 0)).replace(',', ' ') }}</div></div>
+      <div class="card"><div class="k">Large payouts (month)</div><div class="v">{{ st.get('big_n', '—') }}</div></div>
+    </div>{% else %}<p class="hint">This installation has not checked in yet. Set the two settings below on it and it will appear here.</p>{% endif %}
+    <h3 style="margin-top:22px">Set-up on the client installation</h3>
+    <table class="kv"><tr><td>LICENSE_KEY</td><td class="mono" style="word-break:break-all">{{ t.license_key }}</td></tr><tr><td>MASTER_URL</td><td class="mono">{{ master_url }}</td></tr></table>
+    <h3 style="margin-top:22px">Details</h3>
+    <form method="post" action="{{ url_for('master_edit', tid=t.id) }}" class="fields">
+      <label>Client name<input name="name" value="{{ t.name }}" required></label><label>Contact person<input name="contact_name" value="{{ t.contact_name or '' }}"></label>
+      <label>Contact email<input name="contact_email" value="{{ t.contact_email or '' }}"></label><label>Plan<input name="plan" value="{{ t.plan or '' }}"></label>
+      <label>Fee per month (R)<input name="monthly_fee" value="{{ t.monthly_fee or 0 }}" inputmode="decimal"></label><label>Paid until<input type="date" name="paid_until" value="{{ t.paid_until or '' }}"></label>
+      <label>Their app address<input name="instance_url" value="{{ t.instance_url or '' }}"></label><label>Notes<input name="notes" value="{{ t.notes or '' }}"></label>
+      <button style="grid-column:1/-1">Save details</button></form>
+  </div>
+</div>
+<h2>History</h2>
+<div class="tablewrap"><table><tr><th>When</th><th>By</th><th>What</th></tr>
+{% for e in events %}<tr><td class="mono">{{ e.at[:16] }}</td><td>{{ e.user }}</td><td>{{ e.detail }}</td></tr>{% else %}<tr><td colspan="3">Nothing yet.</td></tr>{% endfor %}</table></div>
+{% endblock %}
