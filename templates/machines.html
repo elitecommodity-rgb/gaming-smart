@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Machines</h1>
+<form class="box" method="post">
+  <label>Machine code<input name="code" required placeholder="e.g. SM-014"></label>
+  <label>Location / site<input name="location"></label>
+  <label>Model<input name="model"></label>
+  <button>Add machine</button>
+</form>
+<h2>Register</h2>
+<div class="tablewrap"><table>
+<tr><th>Code</th><th>Location</th><th>Model</th><th>Status</th></tr>
+{% for r in rows %}<tr><td><b>{{ r.code }}</b></td><td>{{ r.location }}</td><td>{{ r.model }}</td><td><span class="pill">{{ r.status }}</span></td></tr>
+{% else %}<tr><td colspan="4">No machines yet.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}
