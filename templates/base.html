@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Gaming Smart{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head><body>
+{% if session.user %}
+<nav>
+  <span class="brand">GAMING SMART</span>
+  <a href="{{ url_for('dashboard') }}">Dashboard</a>
+  <a href="{{ url_for('entries') }}">Wins / Losses</a>
+  <a href="{{ url_for('clients') }}">Clients</a>
+  <a href="{{ url_for('documents') }}">Documents</a>
+  <a href="{{ url_for('machines') }}">Machines</a>
+  <a href="{{ url_for('audit') }}">Audit</a>
+  <span class="sp"></span>
+  <a href="{{ url_for('logout') }}">Log out</a>
+</nav>
+{% endif %}
+<main>
+{% for m in get_flashed_messages() %}<div class="flash">{{ m }}</div>{% endfor %}
+{% block body %}{% endblock %}
+</main>
+</body></html>
