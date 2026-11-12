@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Documents</h1>
+<form class="box" method="post" enctype="multipart/form-data">
+  <label>Document type<select name="doc_type">{% for t in types %}<option>{{ t }}</option>{% endfor %}</select></label>
+  <label>Client (optional)<select name="client_id"><option value="">— none —</option>{% for c in clients %}<option value="{{ c.id }}">{{ c.full_name }}</option>{% endfor %}</select></label>
+  <label>Machine (optional)<select name="machine_id"><option value="">— none —</option>{% for m in machines %}<option value="{{ m.id }}">{{ m.code }}</option>{% endfor %}</select></label>
+  <label>Take photo<input type="file" name="files" accept="image/*" capture="environment"></label>
+  <label>…or choose files<input type="file" name="files" accept="image/*,application/pdf" multiple></label>
+  <button>Upload</button>
+</form>
+<h2>All documents</h2>
+<div class="thumbs">
+{% for d in rows %}
+  <a class="thumb" href="{{ url_for('files', name=d.filename) }}" target="_blank">
+    {% if d.filename.endswith('.pdf') %}<div class="pdf">PDF</div>{% else %}<img src="{{ url_for('files', name=d.filename) }}" loading="lazy">{% endif %}
+    <div class="m">{{ d.doc_type }}<br>{{ d.full_name or d.code or '—' }}<br>{{ d.uploaded_at }}</div>
+  </a>
+{% else %}<div class="card">Nothing uploaded yet.</div>{% endfor %}
+</div>
+{% endblock %}
