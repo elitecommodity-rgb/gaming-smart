@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="rephead">
+  <h1>Install {{ m.code }} {% if inst %}<span class="pill {{ {'complete': 'ok', 'review': 'warn'}.get(inst.status, '') }}">{{ {'complete': 'verified', 'review': 'needs review', 'incomplete': 'incomplete'}[inst.status] }}</span>{% else %}<span class="pill">not started</span>{% endif %}</h1>
+  <span><a class="btn sm" href="{{ url_for('manual_install') }}">Installation manual</a> <a class="btn sm" href="{{ url_for('machines') }}">← Machines</a></span>
+</div>
+<p class="hint">{{ m.location or 'No location set' }}{% if m.model %} · {{ m.model }}{% endif %}. Take each photo with the machine on. The app reads the plate, label and meter, fills in the details, and checks them against this machine's record. You can save part-way and come back.</p>
+{% if inst and inst.flags %}<div class="errors"><b>Check these:</b><ul>{% for x in inst.flags.split('; ') %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+<form id="inf" method="post" enctype="multipart/form-data" class="stack">
+  <div class="card">
+    <h3>1 · Photos</h3>
+    <div class="slots">
+    {% for key, label in slots %}
+      <div class="slot">
+        <div class="k">{{ loop.index }}. {{ label }}</div>
+        {% if photos.get(key) %}<a href="{{ url_for('files', name=photos[key].filename) }}" target="_blank"><img class="preview" style="max-height:140px" src="{{ url_for('files', name=photos[key].filename) }}" alt="" loading="lazy"></a>
+          <div class="hint">taken {{ photos[key].taken_at }}{% if photos[key].flags and 'not machine-read' not in photos[key].flags %} · <span class="neg">{{ photos[key].flags }}</span>{% endif %}</div>{% endif %}
+        <input type="file" id="p_{{ key }}" name="photo_{{ key }}" accept="image/*" capture="environment">
+        <input type="hidden" name="ocr_{{ key }}" id="ocr_{{ key }}">
+        <img id="v_{{ key }}" class="preview" alt="" hidden style="max-height:140px">
+        <div id="s_{{ key }}" class="hint"></div>
+      </div>
+    {% endfor %}
+    </div>
+  </div>
+  <div class="card">
+    <h3>2 · Machine details</h3>
+    <div class="fields">
+      <label>Serial number (from the plate) <input name="serial_no" id="serial_no" value="{{ inst.serial_no if inst and inst.serial_no else '' }}"></label>
+      <label>Manufacturer / model<input name="manufacturer" value="{{ inst.manufacturer if inst and inst.manufacturer else (m.model or '') }}"></label>
+      <label>Opening meter: coin in<input name="meter_in" id="meter_in" inputmode="decimal"></label>
+      <label>Opening meter: coin out<input name="meter_out" id="meter_out" inputmode="decimal"></label>
+    </div>
+  </div>
+  <div class="card">
+    <h3>3 · Checklist</h3>
+    {% for key, label in checks_def %}<label class="check"><input type="checkbox" name="chk_{{ key }}" value="1" {{ 'checked' if key in done }}> {{ label }}</label>{% endfor %}
+    <label style="margin-top:10px">Notes<input name="notes" value="{{ inst.notes if inst and inst.notes else '' }}" placeholder="Anything the next technician should know"></label>
+  </div>
+  <button class="big">Save installation</button>
+  {% if inst %}<p class="hint">Installed by {{ inst.installed_by }} · {{ inst.installed_at }} · last saved {{ inst.updated_at }}</p>{% endif %}
+</form>
+<script src="{{ url_for('static', filename='capture.js') }}"></script>
+<script>
+const f = document.getElementById('inf');
+const cap = (key, kind, apply) => GSCapture({ input: '#p_' + key, status: '#s_' + key, preview: '#v_' + key, ocr: '#ocr_' + key, kind, apply });
+cap('front', null); cap('position', null);
+cap('plate', 'plate', (s, h) => { const g = []; if (s.serial && h.setv(f.serial_no, s.serial)) g.push('serial ' + s.serial); if (s.machine_code && s.machine_code !== {{ m.code|tojson }}) g.push('WARNING plate shows ' + s.machine_code); return g; });
+cap('label', 'plate', (s, h) => { if (!s.machine_code) return []; return [s.machine_code === {{ m.code|tojson }} ? 'machine code matches' : 'WARNING label shows ' + s.machine_code + ', not ' + {{ m.code|tojson }}]; });
+cap('meter', 'meter', (s, h) => { const g = []; if (s.coin_in && h.setv(f.meter_in, s.coin_in)) g.push('coin in ' + s.coin_in); if (s.coin_out && h.setv(f.meter_out, s.coin_out)) g.push('coin out ' + s.coin_out); return g; });
+</script>
+{% endblock %}
