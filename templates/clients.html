@@ -1,18 +1,36 @@
 {% extends "base.html" %}
 {% block body %}
 <h1>Clients</h1>
-<form class="box" method="post">
+<p class="hint">Photograph the client's ID document and the app fills in the ID number and name. The photo is kept on their record and checked against the number entered.</p>
+<form id="cf" class="box" method="post" enctype="multipart/form-data">
+  <input type="hidden" name="ocr_text" id="ocr_text">
+  <label style="grid-column:1/-1">Photo of ID document (optional, recommended)
+    <input id="photo" type="file" name="photo" accept="image/*" capture="environment">
+    <img id="preview" class="preview" alt="ID preview" hidden>
+    <span id="ocrstatus" class="hint"></span></label>
   <label>Full name<input name="full_name" required></label>
-  <label>ID number<input name="id_number"></label>
+  <label>ID number<input name="id_number" inputmode="numeric" autocomplete="off"></label>
   <label>Phone<input name="phone" type="tel"></label>
   <label>Notes<input name="notes"></label>
+  <label class="check" style="grid-column:1/-1"><input type="checkbox" name="notice" value="1" required> The client has been given the <a href="{{ url_for('privacy') }}" target="_blank">privacy notice</a> and told why these details are kept</label>
   <button>Add client</button>
 </form>
 <h2>Search</h2>
 <form method="get" style="margin-bottom:10px"><input name="q" value="{{ q }}" placeholder="Name, ID or phone" style="width:100%"></form>
 <div class="tablewrap"><table>
 <tr><th>Name</th><th>ID number</th><th>Phone</th><th>Added</th></tr>
-{% for r in rows %}<tr><td><a href="{{ url_for('client_detail', cid=r.id) }}">{{ r.full_name }}</a></td><td>{{ r.id_number }}</td><td>{{ r.phone }}</td><td>{{ r.created_at }}</td></tr>
+{% for r in rows %}<tr><td><a href="{{ url_for('client_detail', cid=r.id) }}">{{ r.full_name }}</a></td><td>{{ mask_id(r.id_number) }}</td><td>{{ r.phone }}</td><td>{{ r.created_at }}</td></tr>
 {% else %}<tr><td colspan="4">No clients found.</td></tr>{% endfor %}
 </table></div>
+<script src="{{ url_for('static', filename='capture.js') }}"></script>
+<script>
+GSCapture({ input: '#photo', status: '#ocrstatus', preview: '#preview', ocr: '#ocr_text', kind: 'id',
+  apply: (s, h) => {
+    const f = document.getElementById('cf'), got = [];
+    if (s.id_number && h.setv(f.id_number, s.id_number)) got.push('ID number');
+    if (s.full_name && h.setv(f.full_name, s.full_name)) got.push('name ' + s.full_name);
+    if (s.client) got.push('already on file as ' + s.client.name);
+    return got;
+  } });
+</script>
 {% endblock %}
