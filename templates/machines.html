@@ -9,10 +9,40 @@
   <button>Add machine</button>
 </form>
 {% endif %}
+<p class="hint"><a href="{{ url_for('manual_install') }}">Installation manual</a> · open a machine's <i>installation</i> status below to capture its install photos.</p>
+<h2>Meter photo</h2>
+<p class="hint">Photograph a machine's meter. The app reads the machine and the coin in / coin out figures. Meter readings are compared with the captured wins and losses on the BI board.</p>
+<form id="mf" class="box" method="post" action="{{ url_for('documents') }}" enctype="multipart/form-data">
+  <input type="hidden" name="doc_type" value="Machine meter photo">
+  <input type="hidden" name="next" value="{{ url_for('machines') }}">
+  <input type="hidden" name="ocr_text" id="ocr_text">
+  <label style="grid-column:1/-1">Photo of the meter
+    <input id="photo" type="file" name="files" accept="image/*" capture="environment" required>
+    <img id="preview" class="preview" alt="Meter preview" hidden>
+    <span id="ocrstatus" class="hint"></span></label>
+  <label>Machine<select name="machine_id" required><option value="">— select —</option>{% for r in rows if r.status == 'active' %}<option value="{{ r.id }}">{{ r.code }}</option>{% endfor %}</select></label>
+  <label>Coin in<input name="meter_in" inputmode="decimal"></label>
+  <label>Coin out<input name="meter_out" inputmode="decimal"></label>
+  <button>Save meter reading</button>
+</form>
 <h2>Register</h2>
 <div class="tablewrap"><table>
-<tr><th>Code</th><th>Location</th><th>Model</th><th>Status</th>{% if can('admin') %}<th></th>{% endif %}</tr>
-{% for r in rows %}<tr><td><b>{{ r.code }}</b></td><td>{{ r.location }}</td><td>{{ r.model }}</td><td><span class="pill {{ 'ok' if r.status == 'active' else 'bad' }}">{{ r.status }}</span></td>{% if can('admin') %}<td><form method="post" action="{{ url_for('machine_toggle', mid=r.id) }}"><button class="sm ghost">{{ 'Switch off' if r.status == 'active' else 'Switch on' }}</button></form></td>{% endif %}</tr>
-{% else %}<tr><td colspan="5">No machines yet.</td></tr>{% endfor %}
+<tr><th>Code</th><th>Location</th><th>Model</th><th>Installation</th><th>Last meter reading</th><th>Status</th>{% if can('admin') %}<th></th>{% endif %}</tr>
+{% for r in rows %}{% set mt = meters.get(r.id) %}<tr><td><b>{{ r.code }}</b></td><td>{{ r.location }}</td><td>{{ r.model }}</td>
+<td>{% set st = installs.get(r.id) %}<a href="{{ url_for('machine_install', mid=r.id) }}"><span class="pill {{ {'complete': 'ok', 'review': 'warn', 'incomplete': 'warn'}.get(st, 'bad') }}">{{ {'complete': 'verified', 'review': 'needs review', 'incomplete': 'incomplete'}.get(st, 'not installed') }}</span></a></td>
+<td>{% if mt %}{{ mt.read_at[:10] }} · in {{ '{:,.0f}'.format(mt.coin_in or 0) }} / out {{ '{:,.0f}'.format(mt.coin_out or 0) }}{% else %}<span class="hint">none yet</span>{% endif %}</td>
+<td><span class="pill {{ 'ok' if r.status == 'active' else 'bad' }}">{{ r.status }}</span></td>{% if can('admin') %}<td><form method="post" action="{{ url_for('machine_toggle', mid=r.id) }}"><button class="sm ghost">{{ 'Switch off' if r.status == 'active' else 'Switch on' }}</button></form></td>{% endif %}</tr>
+{% else %}<tr><td colspan="7">No machines yet.</td></tr>{% endfor %}
 </table></div>
+<script src="{{ url_for('static', filename='capture.js') }}"></script>
+<script>
+GSCapture({ input: '#photo', status: '#ocrstatus', preview: '#preview', ocr: '#ocr_text', kind: 'meter',
+  apply: (s, h) => {
+    const f = document.getElementById('mf'), got = [];
+    if (s.machine_id && h.setv(f.machine_id, s.machine_id, true)) got.push('machine ' + s.machine_code);
+    if (s.coin_in && h.setv(f.meter_in, s.coin_in)) got.push('coin in ' + s.coin_in);
+    if (s.coin_out && h.setv(f.meter_out, s.coin_out)) got.push('coin out ' + s.coin_out);
+    return got;
+  } });
+</script>
 {% endblock %}
