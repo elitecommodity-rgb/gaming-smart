@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Performance reports</h1>
+<form class="box" method="get" style="margin-bottom:6px">
+  <label>From<input type="date" name="start" value="{{ start }}"></label>
+  <label>To<input type="date" name="end" value="{{ end }}"></label>
+  <button>Update</button>
+</form>
+<p style="color:var(--mute);font-size:13px">Amounts in Rand. House net = total in minus payouts. Downloads use the date range above.</p>
+
+{% for rep in reps %}
+<section class="rep">
+  <div class="rephead">
+    <h2>{{ rep.title }}</h2>
+    <div class="dl">
+      <span>Download:</span>
+      <a class="btn sm" href="{{ url_for('export_report', kind=rep.key, fmt='pdf', start=start, end=end) }}">PDF</a>
+      <a class="btn sm" href="{{ url_for('export_report', kind=rep.key, fmt='xlsx', start=start, end=end) }}">Excel</a>
+      <a class="btn sm" href="{{ url_for('export_report', kind=rep.key, fmt='docx', start=start, end=end) }}">Word</a>
+    </div>
+  </div>
+  {% if rep.rows %}
+  <div class="card chartbox"><canvas id="chart{{ loop.index0 }}"></canvas></div>
+  <div class="tablewrap"><table>
+    <tr>{% for c in rep.columns %}<th>{{ c[0] }}</th>{% endfor %}</tr>
+    {% for row in rep.rows[:15] %}<tr>{% for v in row %}{% set t = rep.columns[loop.index0][1] %}
+      <td>{% if t == 'money' %}{{ fmtmoney(v) }}{% elif t == 'pct' %}{{ '%.1f'|format(v) }}%{% else %}{{ v }}{% endif %}</td>{% endfor %}</tr>{% endfor %}
+    {% if rep.totals %}<tr style="font-weight:700">{% for v in rep.totals %}{% set t = rep.columns[loop.index0][1] %}
+      <td>{% if t == 'money' %}{{ fmtmoney(v) }}{% elif t == 'pct' %}{{ '%.1f'|format(v) }}%{% else %}{{ v }}{% endif %}</td>{% endfor %}</tr>{% endif %}
+  </table></div>
+  {% if rep.rows|length > 15 %}<p style="color:var(--mute);font-size:13px">Showing 15 of {{ rep.rows|length }} rows — downloads contain the full list.</p>{% endif %}
+  {% else %}<div class="card">No data in this period.</div>{% endif %}
+</section>
+{% endfor %}
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const CH = {{ charts|tojson }};
+if (window.Chart) {
+  Chart.defaults.color = '#8b94a7';
+  Chart.defaults.borderColor = '#262d3b';
+  CH.forEach((c, i) => {
+    const el = document.getElementById('chart' + i);
+    if (!el || !c.labels.length) return;
+    const horiz = c.kind === 'barh';
+    new Chart(el, {
+      type: c.kind === 'line' ? 'line' : 'bar',
+      data: { labels: c.labels, datasets: c.datasets.map(d => ({
+        label: d.label, data: d.data,
+        backgroundColor: d.colors || d.color, borderColor: d.color,
+        tension: .25, pointRadius: c.labels.length > 31 ? 0 : 3 })) },
+      options: { indexAxis: horiz ? 'y' : 'x', responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: !horiz } },
+        scales: { [horiz ? 'x' : 'y']: { ticks: { callback: v => 'R ' + Number(v).toLocaleString() } } } }
+    });
+    if (horiz) el.parentElement.style.height = Math.max(220, c.labels.length * 28 + 60) + 'px';
+  });
+}
+</script>
+{% endblock %}
