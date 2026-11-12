@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="viewhead"><div><div class="eyebrow">Gilded Age Consulting</div><h1>Gaming Smart backend</h1>
+<div class="sub">Every client installation, its subscription and its status. Switch an account off for non-payment, switch it back on, and reset a client's password on request.</div></div></div>
+<div class="grid">
+  <div class="card"><div class="k">Clients</div><div class="v">{{ k.total }}</div></div>
+  <div class="card"><div class="k">Switched on</div><div class="v pos">{{ k.active }}</div></div>
+  <div class="card"><div class="k">Switched off</div><div class="v {{ 'neg' if k.off }}">{{ k.off }}</div></div>
+  <div class="card"><div class="k">Payment overdue</div><div class="v {{ 'neg' if k.overdue }}">{{ k.overdue }}</div></div>
+  <div class="card"><div class="k">Monthly fees (on)</div><div class="v">R{{ '{:,.0f}'.format(k.mrr).replace(',', ' ') }}</div></div>
+</div>
+<h2>Client accounts</h2>
+<div class="tablewrap"><table>
+<tr><th>Client</th><th>Plan</th><th class="num">Fee / month</th><th>Paid until</th><th>Status</th><th>Last seen</th><th class="num">Machines</th><th class="num">Turnover (month)</th><th></th></tr>
+{% for t in rows %}<tr>
+ <td><a href="{{ url_for('master_tenant', tid=t.id) }}"><b>{{ t.name }}</b></a><div class="hint">{{ t.contact_name or '' }}</div></td>
+ <td>{{ t.plan or '—' }}</td><td class="num">{{ 'R{:,.0f}'.format(t.monthly_fee or 0).replace(',', ' ') }}</td>
+ <td>{{ t.paid_until or '—' }}{% if t.overdue %} <span class="pill bad">overdue {{ t.overdue }}d</span>{% endif %}</td>
+ <td>{% if t.live %}<span class="pill ok">on</span>{% else %}<span class="pill bad">off</span>{% endif %}{% if t.status == 'active' and not t.live %}<div class="hint">auto: unpaid</div>{% endif %}</td>
+ <td>{% if t.last_seen %}{{ t.last_seen[:16] }}{% if t.stale %} <span class="pill warn">quiet</span>{% endif %}{% else %}<span class="hint">never</span>{% endif %}</td>
+ <td class="num">{{ t.stats.get('machines', '—') }}</td><td class="num">{% if t.stats.get('month_in') is not none %}{{ 'R{:,.0f}'.format(t.stats.get('month_in', 0)).replace(',', ' ') }}{% else %}—{% endif %}</td>
+ <td style="white-space:nowrap"><form class="inline" method="post" action="{{ url_for('master_toggle', tid=t.id) }}">{% if t.status == 'active' %}<input type="hidden" name="to" value="suspended"><input type="hidden" name="reason" value="Account switched off for non-payment."><button class="sm ghost" onclick="return confirm('Switch {{ t.name }} off? Their users cannot sign in until it is switched back on.')">Turn off</button>{% else %}<input type="hidden" name="to" value="active"><button class="sm">Turn on</button>{% endif %}</form></td>
+</tr>{% else %}<tr><td colspan="9">No clients yet. Add the first one below.</td></tr>{% endfor %}
+</table></div>
+<h2>Add a client</h2>
+<form class="box" method="post" action="{{ url_for('master') }}">
+  <label>Client name<input name="name" required></label>
+  <label>Contact person<input name="contact_name"></label>
+  <label>Contact email<input name="contact_email" type="email"></label>
+  <label>Plan<input name="plan" placeholder="e.g. Standard"></label>
+  <label>Fee per month (R)<input name="monthly_fee" inputmode="decimal" value="0"></label>
+  <label>Paid until<input name="paid_until" type="date"></label>
+  <label>Their app address<input name="instance_url" placeholder="https://client.onrender.com"></label>
+  <button>Create client and licence key</button>
+</form>
+<p class="hint">Each client gets a licence key. Set it on the client's installation as <span class="mono">LICENSE_KEY</span>, together with <span class="mono">MASTER_URL</span> set to this backend's address. The client then checks in here every few minutes. If this backend cannot be reached, the client keeps working in its last known state.</p>
+{% endblock %}
