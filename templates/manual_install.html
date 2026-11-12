@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="rephead noprint"><h1>Machine installation manual</h1><button class="sm" onclick="window.print()">Print / save as PDF</button></div>
+<h1 class="onlyprint" style="display:none">Gaming Smart – Machine installation manual</h1>
+<p class="hint">For technicians and floor staff. Every machine is installed, photographed and registered once. After that, wins, losses and payouts are linked to it automatically and the photos stay on file for audit.</p>
+
+<div class="card"><h3>Before you start</h3>
+<ol>
+<li>An admin adds the machine under <b>Machines</b> with its code, location and model. The code must be the one printed on the cabinet label.</li>
+<li>Bring a phone with a working camera and a data connection, the machine's serial plate details, and the printed code label.</li>
+<li>Sign in with your own account so the installation is recorded against your name.</li>
+</ol></div>
+
+<div class="card" style="margin-top:12px"><h3>Step by step</h3>
+<ol>
+<li>Open <b>Machines</b>, find the machine and tap <b>Install</b>.</li>
+<li>Power up the machine and play a test round. Tick <i>powered up and test-played</i> only when it worked.</li>
+<li>Fix the machine code label to the cabinet where it can be read from the floor.</li>
+<li>Take the five photos below. The app reads the plate, label and meter, fills in the serial number and opening meters, and flags anything that does not match this machine.</li>
+<li>Check every filled-in value (green border) against the machine itself. The photo reading is a helper, never the authority.</li>
+<li>Tick the checklist, add notes, and tap <b>Save installation</b>. You can save part-way and return later.</li>
+</ol></div>
+
+<div class="card" style="margin-top:12px"><h3>The five photos</h3>
+<table class="kv">
+{% for key, label in slots %}<tr><td>{{ loop.index }}</td><td><b>{{ label }}</b></td></tr>{% endfor %}
+</table>
+<h3 style="margin-top:14px">Photo standard</h3>
+<ul>
+<li>Hold the phone flat and square to what you are photographing, so the text is not skewed.</li>
+<li>Fill the frame with the plate, label or screen. No glare, no fingers, no reflections.</li>
+<li>Show the whole cabinet for the front photo, and enough of the surroundings for the position photo that someone could find the machine from it.</li>
+<li>Retake any photo the app cannot read. Typed values are still accepted, but the record is marked as not machine-read.</li>
+</ul></div>
+
+<div class="card" style="margin-top:12px"><h3>Checklist</h3>
+<ul>{% for key, label in checks_def %}<li>{{ label }}</li>{% endfor %}</ul></div>
+
+<div class="card" style="margin-top:12px"><h3>What the system checks</h3>
+<table class="kv">
+<tr><td>Serial number</td><td>Must be unique. A serial already registered to another machine is refused.</td></tr>
+<tr><td>Code label</td><td>The code read from the label photo must be this machine's code.</td></tr>
+<tr><td>Serial plate</td><td>The serial read from the plate photo must match what was typed.</td></tr>
+<tr><td>Opening meters</td><td>Coin in and coin out must match the meter photo. They are saved as the first meter reading and used later to check captured takings.</td></tr>
+<tr><td>Completeness</td><td>The machine is <b>verified</b> only when all five photos, the serial number and the whole checklist are done and nothing was flagged. Otherwise it shows <b>incomplete</b> or <b>needs review</b>.</td></tr>
+</table></div>
+
+<div class="card" style="margin-top:12px"><h3>After installation</h3>
+<ul>
+<li>Staff capture wins and losses against the machine on the <b>Wins / Losses</b> page. Payouts of R {{ '{:,.0f}'.format(lo) }} or more go on <b>Large payouts</b>.</li>
+<li>Take a meter photo from the <b>Machines</b> page regularly. The BI board compares meter movement with captured takings and shows the variance.</li>
+<li>If a machine is moved, repaired or its plate is replaced, open Install again and retake the affected photos. Earlier photos stay in the audit trail.</li>
+<li>Switch a machine off on the Machines page when it leaves the floor. Its history is kept.</li>
+</ul></div>
+
+<div class="card" style="margin-top:12px"><h3>Planned: direct machine integration</h3>
+<p>This manual covers manual photo capture, which works on any machine today with no changes to it. Direct integration is a later option and is <b>not built yet</b>. It would let a machine report its meters and payouts to the app automatically. Typical routes are a slot-accounting protocol interface on the machine, or a data feed from the venue's existing accounting system. The serial number, model and opening meters captured here are what such an integration would use to identify each machine and to check its first readings.</p></div>
+{% endblock %}
