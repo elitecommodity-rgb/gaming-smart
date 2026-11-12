@@ -1,37 +1,104 @@
 {% extends "base.html" %}
-{% macro money(v) %}<span class="{{ 'pos' if v >= 0 else 'neg' }}">R {{ '{:,.2f}'.format(v) }}</span>{% endmacro %}
+{% macro R(v) %}R{{ '{:,.0f}'.format(v|abs).replace(',', ' ') }}{% endmacro %}
+{% macro Rs(v) %}{{ '−' if v < 0 }}R{{ '{:,.0f}'.format(v|abs).replace(',', ' ') }}{% endmacro %}
+{% macro chg(v, goodup=True) %}{% if v is none %}<span class="delta flat">n/a</span>{% else %}<span class="delta {{ 'flat' if v == 0 else (('up' if v > 0 else 'down') if goodup else ('down' if v > 0 else 'up')) }}">{{ '+' if v > 0 }}{{ '%.0f'|format(v) }}%</span>{% endif %}{% endmacro %}
 {% block body %}
-<h1>Dashboard</h1>
-<div class="grid">
-  <div class="card"><div class="k">Net today</div><div class="v">{{ money(s.today.net) }}</div><div class="s">In R {{ '{:,.0f}'.format(s.today.in) }} · Out R {{ '{:,.0f}'.format(s.today.out) }}</div></div>
-  <div class="card"><div class="k">Net this month</div><div class="v">{{ money(s.month.net) }}</div><div class="s">In R {{ '{:,.0f}'.format(s.month.in) }} · Out R {{ '{:,.0f}'.format(s.month.out) }}</div></div>
-  <div class="card"><div class="k">Active machines</div><div class="v">{{ s.machines }}</div></div>
-  <div class="card"><div class="k">Clients</div><div class="v">{{ s.clients }}</div></div>
-  <div class="card"><div class="k">Documents on file</div><div class="v">{{ s.docs }}</div></div>
-  <div class="card"><div class="k">Large payouts (month)</div><div class="v">{{ s.big_n }}</div><div class="s">R {{ '{:,.2f}'.format(s.big_total) }} · <a href="{{ url_for('payouts') }}">view</a></div></div>
+{% set o = ov %}
+<div class="viewhead">
+  <div><div class="eyebrow">Executive summary</div><h1>{{ o.title }}</h1>
+  <div class="sub">{{ o.start }} to {{ o.end }}. Compared with {{ o.prev[0] }} to {{ o.prev[1] }}.</div></div>
+  <div class="seg noprint">{% for k, lab in o.periods %}<a href="{{ url_for('dashboard', p=k) }}" class="{{ 'on' if k == o.key }}">{{ lab }}</a>{% endfor %}</div>
+</div>
+<div class="strip noprint"><a href="{{ url_for('entries') }}">📷 Slip</a><a href="{{ url_for('payout_new') }}">📷 Large payout</a><a href="{{ url_for('clients') }}">📷 Client ID</a><a href="{{ url_for('machines') }}">📷 Meter / install</a><a href="{{ url_for('documents') }}">📷 Document</a></div>
+
+<div class="ov">
+  <div class="card hero">
+    <div class="k">House net contribution</div>
+    <div class="big {{ 'neg' if o.net < 0 }}">{{ Rs(o.net) }}</div>
+    <div class="s">{{ '%.1f'|format(o.hold) }}% hold, was {{ '%.1f'|format(o.hold_prev) }}% before. {{ chg(o.net_d) }} on the prior period.</div>
+    <div class="rows">
+      <div><span>Turnover (total in)</span><b>{{ R(o.turnover) }} {{ chg(o.turnover_d) }}</b></div>
+      <div><span>Payouts</span><b class="neg">−{{ R(o.out) }} {{ chg(o.out_d, False) }}</b></div>
+      <div><span>of which large payouts ({{ o.big_n }})</span><b>{{ R(o.big_v) }}</b></div>
+      <div><span>Payout ratio</span><b>{{ '%.1f'|format(o.ratio) }}%</b></div>
+      <div class="tot"><span>House net</span><b>{{ Rs(o.net) }}</b></div>
+    </div>
+    <div class="leak"><div class="k">Flagged for review</div><div class="n">{{ Rs(o.attn) }}</div><div class="s">{{ o.watch|length }} item{{ '' if o.watch|length == 1 else 's' }} flagged. Values can overlap, so read each on its own.</div></div>
+  </div>
+
+  <div class="card">
+    <div class="rephead"><h3>Machine performance</h3><span class="hint">Floor payout ratio {{ '%.1f'|format(o.ratio) }}% · {{ o.machines|length }} machines</span></div>
+    <div class="tablewrap"><table>
+    <tr><th>Machine</th><th>Share of turnover</th><th class="num">Turnover</th><th class="num">Payouts</th><th class="num">Net</th><th class="num">Hold</th><th class="num">vs prior</th></tr>
+    {% for m in o.machines %}<tr>
+      <td><b>{{ m.code }}</b><div class="hint">{{ m.loc or '—' }}</div></td>
+      <td style="min-width:110px"><div class="mbar"><i style="width:{{ [m.share * 2.2, 100]|min }}%"></i></div><div class="hint">{{ '%.0f'|format(m.share) }}%</div></td>
+      <td class="num">{{ R(m.in) }}</td><td class="num">{{ R(m.out) }}</td>
+      <td class="num {{ 'pos' if m.net >= 0 else 'neg' }}"><b>{{ Rs(m.net) }}</b></td>
+      <td class="num">{{ '%.1f'|format(m.hold) }}%</td><td class="num">{{ chg(m.vs) }}</td></tr>
+    {% else %}<tr><td colspan="7">No machines yet. <a href="{{ url_for('machines') }}">Add one</a>.</td></tr>{% endfor %}
+    </table></div>
+  </div>
 </div>
 
-<h2>Machine performance — this month</h2>
-<div class="tablewrap"><table>
-<tr><th>Machine</th><th>Location</th><th>In</th><th>Out</th><th>Net</th></tr>
-{% for r in pm %}<tr><td><b>{{ r.code }}</b></td><td>{{ r.location }}</td><td>R {{ '{:,.2f}'.format(r.i) }}</td><td>R {{ '{:,.2f}'.format(r.o) }}</td><td>{{ money(r.i - r.o) }}</td></tr>
-{% else %}<tr><td colspan="5">No machines yet — <a href="{{ url_for('machines') }}">add one</a>.</td></tr>{% endfor %}
-</table></div>
-
-<h2>Latest large payouts</h2>
-<div class="tablewrap"><table>
-<tr><th>#</th><th>Paid</th><th>Machine</th><th>Customer</th><th>Amount</th></tr>
-{% for p in bigrecent %}<tr><td><a href="{{ url_for('payout_detail', pid=p.id) }}">#{{ p.id }}</a></td><td>{{ p.paid_at }}</td><td><b>{{ p.code }}</b></td><td>{{ p.full_name }}</td><td>R {{ '{:,.2f}'.format(p.amount) }}</td></tr>
-{% else %}<tr><td colspan="5">No large payouts captured yet.</td></tr>{% endfor %}
-</table></div>
-
-<h2>Recent documents</h2>
-<div class="thumbs">
-{% for d in recent %}
-  <a class="thumb" href="{{ url_for('files', name=d.filename) }}" target="_blank">
-    {% if d.filename.endswith('.pdf') %}<div class="pdf">PDF</div>{% else %}<img src="{{ url_for('files', name=d.filename) }}" loading="lazy">{% endif %}
-    <div class="m">{{ d.doc_type }}<br>{{ d.full_name or '—' }}</div>
-  </a>
-{% else %}<div class="card">Nothing uploaded yet.</div>{% endfor %}
+<div class="card" style="margin-top:16px">
+  <div class="rephead"><h3>Machines against client information and payouts</h3><span class="hint">{{ '%.0f'|format(o.linked_pct) }}% of payouts tied to a client · {{ o.clients_paid }} clients paid</span></div>
+  <div class="tablewrap"><table>
+  <tr><th>Machine</th><th class="num">Payouts</th><th class="num">Payout ratio</th><th class="num">Clients paid</th><th>Largest recipient</th><th class="num">Client linked</th><th class="num">Large payouts</th><th></th></tr>
+  {% for m in o.machines %}<tr>
+    <td><b>{{ m.code }}</b></td><td class="num">{{ R(m.out) }}</td><td class="num">{{ '%.1f'|format(m.ratio) }}%</td><td class="num">{{ m.clients }}</td>
+    <td>{% if m.top %}{{ m.top }} <span class="hint">· {{ '%.0f'|format(m.top_pct) }}%</span>{% else %}<span class="hint">—</span>{% endif %}</td>
+    <td class="num"><span class="pill {{ 'ok' if m.linked >= 90 else ('warn' if m.linked >= 60 else 'bad') }}">{{ '%.0f'|format(m.linked) }}%</span></td>
+    <td class="num">{{ m.big_n }}{% if m.big_n %} · {{ R(m.big_v) }}{% endif %}</td>
+    <td>{% if m.excess %}<span class="pill warn">above average</span>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="8">No machine activity in this period.</td></tr>{% endfor %}
+  </table></div>
 </div>
+
+<div class="ov2">
+  <div class="card"><h3>Watch list</h3>
+    {% for w in o.watch %}<div class="listrow"><div><b>{{ w.t }}</b><span class="hint">{{ w.d }}</span></div><div class="amt">{{ R(w.v) }}</div></div>
+    {% else %}<p class="hint">Nothing to flag. Payouts are tied to clients with ID on file and photos agree with what was entered.</p>{% endfor %}
+  </div>
+  <div class="card"><h3>Recommended actions</h3>
+    {% for lvl, t, d in o.acts %}<div class="act"><span class="t"><span class="tag {{ 'med' if lvl == 'MEDIUM' }}">{{ lvl }}</span></span><div><b>{{ t }}</b><p>{{ d }}</p></div></div>
+    {% else %}<p class="hint">No actions. Keep capturing photos so the checks stay current.</p>{% endfor %}
+  </div>
+</div>
+
+<div class="ov2">
+  <div class="card"><h3>Who was paid</h3>
+    <table><tr><th>Client</th><th class="num">Payouts</th><th class="num">Share</th><th class="num">Machines</th><th>ID on file</th></tr>
+    {% for c in o.clients %}<tr><td><a href="{{ url_for('client_detail', cid=c.id) }}">{{ c.name }}</a></td><td class="num">{{ R(c.out) }}</td><td class="num">{{ '%.1f'|format(c.pct) }}%</td><td class="num">{{ c.machines }}</td>
+      <td>{% if c.id_photo %}<span class="pill ok">photo</span>{% elif c.id_number %}<span class="pill warn">number only</span>{% else %}<span class="pill bad">none</span>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="5">No payouts tied to a client in this period.</td></tr>{% endfor %}</table></div>
+  <div class="card"><h3>Large payouts, latest</h3>
+    <table><tr><th>#</th><th>Paid</th><th>Machine</th><th>Customer</th><th class="num">Amount</th></tr>
+    {% for p in bigrecent %}<tr><td><a href="{{ url_for('payout_detail', pid=p.id) }}">#{{ p.id }}</a></td><td>{{ p.paid_at[:16] }}</td><td><b>{{ p.code }}</b></td><td>{{ p.full_name }}</td><td class="num">{{ R(p.amount) }}</td></tr>
+    {% else %}<tr><td colspan="5">No large payouts captured yet.</td></tr>{% endfor %}</table></div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <div class="rephead"><h3>Payouts against the usual level, daily</h3><span class="hint"><span class="neg">Red</span> = well above the usual for that weekday</span></div>
+  <p class="hint" style="margin:0 0 8px">Payouts per day against the usual for that weekday (the middle of the last 8 same weekdays). A day is flagged at 30% above usual and at least R1 000 more.</p>
+  <div class="chartbox"><canvas id="c_daily"></canvas></div>
+  {% for r in o.daily.rows %}<div class="listrow"><div><span class="mono dim">{{ r.date }} {{ r.dow }}</span> &nbsp; {{ R(r.out) }} paid against {{ R(r.usual) }} usual</div><div class="amt">+{{ r.pct }}% · {{ R(r.extra) }} extra</div></div>{% endfor %}
+  <p class="hint" style="margin-top:10px">{{ o.daily.n_flag }} of {{ o.daily.days }} days flagged.</p>
+</div>
+<p class="hint" style="margin-top:14px">Hold is house net divided by total in. A machine is shown as above average when its payout ratio is more than 15% over the floor ratio. Figures come only from entries captured in the app.</p>
+<details class="more"><summary>Supporting analysis</summary><p class="hint">Trends, hold by day, payout size mix, hour-of-day, photo coverage and meter variance are on the <a href="{{ url_for('bi_board') }}">Analysis</a> page. Downloadable PDF, Excel and Word reports are under <a href="{{ url_for('reports') }}">Reporting</a>.</p></details>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const D = {{ o.daily|tojson }};
+if (window.Chart) {
+  Chart.defaults.color = '#A9C0C4'; Chart.defaults.borderColor = 'rgba(245,243,238,.1)'; Chart.defaults.maintainAspectRatio = false;
+  Chart.defaults.font.family = "'DM Sans',system-ui,sans-serif";
+  const money = v => 'R ' + Math.round(v).toLocaleString('en-ZA');
+  new Chart(document.getElementById('c_daily'), { data: { labels: D.labels, datasets: [
+    { type: 'bar', label: 'Payouts', data: D.out, backgroundColor: D.flag.map(f => f ? '#E8A598' : '#6f8c96') },
+    { type: 'line', label: 'Usual for that weekday', data: D.usual, borderColor: '#F5F3EE', borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, tension: .3 }] },
+    options: { scales: { y: { ticks: { callback: money } }, x: { grid: { display: false } } }, plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + money(c.parsed.y) } } } } });
+}
+</script>
 {% endblock %}
