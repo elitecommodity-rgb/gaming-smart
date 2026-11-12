@@ -39,3 +39,32 @@ button,.btn{background:var(--gold);color:#1a1405;border:0;border-radius:6px;padd
 a.btn{display:inline-block;color:#1a1405}
 .sm{padding:5px 10px;font-size:13px}
 .chartbox{height:320px;margin-bottom:12px;position:relative}
+.stack{display:grid;gap:12px}
+.card h3{margin:0 0 10px;font-size:15px}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:10px}
+.hint{color:var(--mute);font-size:13px}
+.errors{background:#3a1512;border:1px solid var(--red);border-radius:8px;padding:10px 14px;margin-bottom:12px}
+.errors ul{margin:6px 0 0 18px;padding:0}
+.preview{max-width:100%;max-height:340px;border-radius:8px;margin-top:10px;display:block}
+.auto{background:#10331f;color:var(--green);border-radius:99px;padding:1px 8px;font-size:11px;margin-left:6px;text-transform:none}
+.results button{display:block;width:100%;text-align:left;background:var(--bg);color:var(--text);border:1px solid var(--line);margin-top:4px;font-weight:400}
+.pickedbox{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;gap:10px;align-items:center;justify-content:space-between}
+.ghost{background:transparent;color:var(--gold);border:1px solid var(--gold)}
+label.check{flex-direction:row;align-items:center;gap:8px;color:var(--text);font-size:14px}
+label.check input{width:auto}
+.dupbox{background:#3a2d0c;border:1px solid var(--gold);border-radius:8px;padding:10px 12px}
+button.big{padding:14px;font-size:16px}
+img.mini{width:54px;height:40px;object-fit:cover;border-radius:4px;display:block}
+tr.voided td{opacity:.5;text-decoration:line-through}
+tr.voided td:last-child{text-decoration:none}
+.pill.ok{background:#10331f;color:var(--green)}
+.pill.warn{background:#3a2d0c;color:var(--gold)}
+.pill.bad{background:#3a1512;color:var(--red)}
+.pager{display:flex;gap:12px;align-items:center;justify-content:center;margin-top:14px;color:var(--mute)}
+.split{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:14px}
+@media(max-width:760px){.split{grid-template-columns:1fr}}
+img.formphoto{width:100%;border-radius:8px;display:block}
+table.kv{margin-top:10px;background:transparent;border:0}
+table.kv td{border-bottom:1px solid var(--line);padding:7px 0}
+table.kv td:first-child{color:var(--mute);width:110px}
+.flaglist{margin:8px 0 0 18px;padding:0;color:var(--gold)}
