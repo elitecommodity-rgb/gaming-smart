@@ -1,24 +1,42 @@
 {% extends "base.html" %}
 {% block body %}
 <h1>Wins / Losses</h1>
-<form class="box" method="post" enctype="multipart/form-data">
-  <label>Date<input type="date" name="entry_date" value="{{ today }}" required></label>
+<p class="hint">Take a photo of the slip or cash-up sheet and the app fills in the machine, amounts and date. Check them, then save. Payouts of R 5,000 or more go on <a href="{{ url_for('payouts') }}">Large payouts</a>.</p>
+<form id="ef" class="box" method="post" enctype="multipart/form-data">
+  <input type="hidden" name="ocr_text" id="ocr_text">
+  <label style="grid-column:1/-1">Photo of the slip (optional, recommended)
+    <input id="photo" type="file" name="photo" accept="image/*" capture="environment">
+    <img id="preview" class="preview" alt="Slip preview" hidden>
+    <span id="ocrstatus" class="hint"></span></label>
+  <label>Date<input type="date" name="entry_date" value="{{ today }}" max="{{ today }}" required></label>
   <label>Machine<select name="machine_id" required>{% for m in machines %}<option value="{{ m.id }}">{{ m.code }}{% if m.location %} — {{ m.location }}{% endif %}</option>{% endfor %}</select></label>
   <label>Client (optional)<select name="client_id"><option value="">— none —</option>{% for c in clients %}<option value="{{ c.id }}">{{ c.full_name }}</option>{% endfor %}</select></label>
-  <label>Amount in (R)<input type="number" step="0.01" min="0" name="amount_in" value="0"></label>
-  <label>Amount out / payout (R)<input type="number" step="0.01" min="0" name="amount_out" value="0"></label>
+  <label>Amount in (R)<input type="text" inputmode="decimal" name="amount_in" value="0"></label>
+  <label>Amount out / payout (R)<input type="text" inputmode="decimal" name="amount_out" value="0"></label>
   <label>Notes<input name="notes"></label>
-  <label>Slip photo<input type="file" name="photo" accept="image/*" capture="environment"></label>
   <button>Save entry</button>
 </form>
 <h2>Latest entries</h2>
 <div class="tablewrap"><table>
-<tr><th>Date</th><th>Machine</th><th>Client</th><th>In</th><th>Out</th><th>Net</th><th>Slip</th><th>Notes</th></tr>
+<tr><th>Date</th><th>Machine</th><th>Client</th><th>In</th><th>Out</th><th>Net</th><th>Photo check</th><th>Notes</th></tr>
 {% for e in rows %}{% set net = e.amount_in - e.amount_out %}<tr>
 <td>{{ e.entry_date }}</td><td><b>{{ e.code }}</b></td><td>{{ e.full_name or '—' }}</td>
 <td>R {{ '{:,.2f}'.format(e.amount_in) }}</td><td>R {{ '{:,.2f}'.format(e.amount_out) }}</td>
 <td class="{{ 'pos' if net >= 0 else 'neg' }}">R {{ '{:,.2f}'.format(net) }}</td>
-<td>{{ '📎 ' ~ e.ndocs if e.ndocs else '—' }}</td><td>{{ e.notes }}</td></tr>
+<td>{% if e.photo_check == 'match' %}<span class="pill ok">agrees</span>{% elif e.photo_check == 'differs' %}<span class="pill warn" title="{{ e.flags }}">differs</span>{% elif e.photo_check == 'unread' %}<span class="pill">photo, not read</span>{% elif e.ndocs %}<span class="pill ok">photo</span>{% else %}<span class="hint">no photo</span>{% endif %}</td>
+<td>{{ e.notes }}</td></tr>
 {% else %}<tr><td colspan="8">No entries yet.</td></tr>{% endfor %}
 </table></div>
+<script src="{{ url_for('static', filename='capture.js') }}"></script>
+<script>
+GSCapture({ input: '#photo', status: '#ocrstatus', preview: '#preview', ocr: '#ocr_text', kind: 'slip',
+  apply: (s, h) => {
+    const f = document.getElementById('ef'), got = [];
+    if (s.machine_id && h.setv(f.machine_id, s.machine_id, true)) got.push('machine ' + s.machine_code);
+    if (s.amount_in && h.setv(f.amount_in, s.amount_in.toFixed(2))) got.push('amount in R ' + s.amount_in.toFixed(2));
+    if (s.amount_out && h.setv(f.amount_out, s.amount_out.toFixed(2))) got.push('amount out R ' + s.amount_out.toFixed(2));
+    if (s.date && h.setv(f.entry_date, s.date, true)) got.push('date ' + s.date);
+    return got;
+  } });
+</script>
 {% endblock %}
