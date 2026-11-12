@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Wins / Losses</h1>
+<form class="box" method="post" enctype="multipart/form-data">
+  <label>Date<input type="date" name="entry_date" value="{{ today }}" required></label>
+  <label>Machine<select name="machine_id" required>{% for m in machines %}<option value="{{ m.id }}">{{ m.code }}{% if m.location %} — {{ m.location }}{% endif %}</option>{% endfor %}</select></label>
+  <label>Client (optional)<select name="client_id"><option value="">— none —</option>{% for c in clients %}<option value="{{ c.id }}">{{ c.full_name }}</option>{% endfor %}</select></label>
+  <label>Amount in (R)<input type="number" step="0.01" min="0" name="amount_in" value="0"></label>
+  <label>Amount out / payout (R)<input type="number" step="0.01" min="0" name="amount_out" value="0"></label>
+  <label>Notes<input name="notes"></label>
+  <label>Slip photo<input type="file" name="photo" accept="image/*" capture="environment"></label>
+  <button>Save entry</button>
+</form>
+<h2>Latest entries</h2>
+<div class="tablewrap"><table>
+<tr><th>Date</th><th>Machine</th><th>Client</th><th>In</th><th>Out</th><th>Net</th><th>Slip</th><th>Notes</th></tr>
+{% for e in rows %}{% set net = e.amount_in - e.amount_out %}<tr>
+<td>{{ e.entry_date }}</td><td><b>{{ e.code }}</b></td><td>{{ e.full_name or '—' }}</td>
+<td>R {{ '{:,.2f}'.format(e.amount_in) }}</td><td>R {{ '{:,.2f}'.format(e.amount_out) }}</td>
+<td class="{{ 'pos' if net >= 0 else 'neg' }}">R {{ '{:,.2f}'.format(net) }}</td>
+<td>{{ '📎 ' ~ e.ndocs if e.ndocs else '—' }}</td><td>{{ e.notes }}</td></tr>
+{% else %}<tr><td colspan="8">No entries yet.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}
