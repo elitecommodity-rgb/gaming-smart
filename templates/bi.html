@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% macro R(v) %}R {{ '{:,.0f}'.format(v) }}{% endmacro %}
+{% macro chip(v, good=True) %}{% if v is none %}<span class="delta flat">no prior data</span>{% else %}<span class="delta {{ 'flat' if v == 0 else (('up' if v > 0 else 'down') if good else 'flat') }}">{{ '▲' if v > 0 else ('▼' if v < 0 else '–') }} {{ '%.1f'|format(v|abs) }}% vs previous {{ b.days }} days</span>{% endif %}{% endmacro %}
+{% block body %}
+{% set k = b.kpis %}
+<div class="rephead">
+  <h1>BI board</h1>
+  <span class="noprint"><button class="sm ghost" onclick="window.print()">Print / save as PDF</button> <a class="btn sm" href="{{ url_for('reports') }}">Downloadable reports</a></span>
+</div>
+<form class="box noprint" method="get" style="margin-bottom:6px">
+  <label>From<input type="date" name="start" value="{{ start }}"></label>
+  <label>To<input type="date" name="end" value="{{ end }}"></label>
+  <button>Update</button>
+</form>
+<div class="strip noprint">
+  <span class="dim" style="align-self:center;font-size:13px">Capture by photo:</span>
+  <a href="{{ url_for('entries') }}">📷 Win / loss slip</a>
+  <a href="{{ url_for('payout_new') }}">📷 Large payout form</a>
+  <a href="{{ url_for('clients') }}">📷 Client ID</a>
+  <a href="{{ url_for('documents') }}">📷 Document</a>
+  <a href="{{ url_for('machines') }}">📷 Meter / machine install</a>
+</div>
+<p class="hint">{{ start }} to {{ end }} ({{ b.days }} days), compared with {{ b.prev[0] }} to {{ b.prev[1] }}. Hold % = house net ÷ total in. Payout ratio = payouts ÷ total in. Every figure comes from entries captured in the app, and the photo-backed figures show how much of it is supported by a photo that agrees with what was entered.</p>
+
+<div class="grid">
+  <div class="card"><div class="k">Turnover (total in)</div><div class="v">{{ R(k.turnover) }}</div><div class="s">{{ chip(k.turnover_d) }}</div></div>
+  <div class="card"><div class="k">Payouts</div><div class="v">{{ R(k.payouts) }}</div><div class="s">{{ chip(k.payouts_d, False) }}</div></div>
+  <div class="card"><div class="k">House net</div><div class="v {{ 'pos' if k.net >= 0 else 'neg' }}">{{ R(k.net) }}</div><div class="s">{{ chip(k.net_d) }}</div></div>
+  <div class="card"><div class="k">Hold %</div><div class="v">{{ '%.1f'|format(k.hold) }}%</div><div class="s">previous {{ '%.1f'|format(k.hold_prev) }}%</div></div>
+  <div class="card"><div class="k">Payout ratio</div><div class="v">{{ '%.1f'|format(k.ratio) }}%</div><div class="s">{{ k.entries }} entries</div></div>
+  <div class="card"><div class="k">Large payouts</div><div class="v">{{ k.big_n }}</div><div class="s">{{ R(k.big_v) }} · {{ '%.1f'|format(k.big_share) }}% of payouts · avg {{ R(k.big_avg) }}</div></div>
+  <div class="card"><div class="k">Photo-backed entries</div><div class="v">{{ '%.1f'|format(k.photo_backed) }}%</div><div class="s">{{ '%.1f'|format(k.photo_agree) }}% of those agree with the entry</div></div>
+</div>
+
+<h2>Takings trend</h2>
+<div class="bi2">
+  <div class="card"><div class="k">Turnover, payouts and net</div><div class="chartbox"><canvas id="c_trend"></canvas></div></div>
+  <div class="card"><div class="k">Hold % by {{ 'day' if b.days <= 62 else 'week' }}</div><div class="chartbox"><canvas id="c_hold"></canvas></div></div>
+</div>
+
+<h2>Machines</h2>
+<div class="bi2">
+  <div class="card"><div class="k">House net by machine</div><div class="chartbox"><canvas id="c_mach"></canvas></div></div>
+  <div class="card"><div class="k">Share of turnover by machine (%)</div><div class="chartbox"><canvas id="c_share"></canvas></div></div>
+</div>
+<div class="tablewrap" style="margin-top:12px"><table>
+<tr><th>Machine</th><th>Turnover</th><th>Share</th><th>Payouts</th><th>Net</th><th>Hold %</th><th>Large payouts</th><th>Photo-backed</th><th></th></tr>
+{% for m in b.machines %}<tr><td><b>{{ m.code }}</b><div class="hint">{{ m.loc }}</div></td><td>{{ R(m.in) }}</td><td>{{ '%.1f'|format(m.share) }}%</td><td>{{ R(m.out) }}</td>
+<td class="{{ 'pos' if m.net >= 0 else 'neg' }}">{{ R(m.net) }}</td><td>{{ '%.1f'|format(m.hold) }}%</td><td>{{ m.big_n }} · {{ R(m.big_v) }}</td><td>{{ '%.0f'|format(m.photo) }}%</td>
+<td>{% if m.flag %}<span class="pill warn">{{ m.flag }}</span>{% endif %}</td></tr>
+{% else %}<tr><td colspan="9">No machines.</td></tr>{% endfor %}
+</table></div>
+
+<h2>Payouts and customers</h2>
+<div class="bi2">
+  <div class="card"><div class="k">Payout size mix (% of payouts)</div><div class="chartbox sm2"><canvas id="c_size"></canvas></div></div>
+  <div class="card"><div class="k">Who the payouts went to (R)</div><div class="chartbox sm2"><canvas id="c_clients"></canvas></div></div>
+  <div class="card"><div class="k">Large payouts by hour of day</div><div class="chartbox sm2"><canvas id="c_hours"></canvas></div></div>
+  <div class="card"><div class="k">Top clients by payouts</div>
+    <table class="kv">{% for c in b.clients %}<tr><td>{{ c.name }}</td><td>{{ R(c.out) }} · {{ '%.1f'|format(c.pct) }}% of payouts · {{ c.n }} payouts</td></tr>{% else %}<tr><td>No client-linked payouts.</td><td></td></tr>{% endfor %}</table></div>
+</div>
+
+<h2>Photo capture: corroboration and effectiveness</h2>
+<div class="bi2">
+  <div class="card"><div class="k">How well photos back the entries</div><div class="chartbox sm2"><canvas id="c_quality"></canvas></div>
+    <table class="kv">{% for q in b.quality %}<tr><td>{{ q.label }}</td><td>{{ q.n }} entries · {{ '%.1f'|format(q.pct) }}% · {{ '%.1f'|format(q.vpct) }}% of value</td></tr>{% endfor %}</table></div>
+  <div class="card"><div class="k">Photo use by section</div>
+    {% for c in b.coverage %}<div class="cov"><span>{{ c.label }}</span><div class="bar {{ 'low' if c.pct < 40 else ('mid' if c.pct < 75 else '') }}"><i style="width:{{ c.pct }}%"></i></div><b>{{ '%.0f'|format(c.pct) }}%</b></div>
+    <div class="hint" style="margin:-4px 0 4px">{{ c.n }} of {{ c.of }}</div>{% endfor %}</div>
+</div>
+
+<h2>Meter readings vs captured takings</h2>
+<p class="hint">For machines with two or more meter photos in the period. Variance = captured figure minus meter movement, as a % of the meter movement. A variance beyond ±5% needs a look: unrecorded plays, missing captures or a mistyped meter.</p>
+<div class="tablewrap"><table>
+<tr><th>Machine</th><th>Readings</th><th>Meter in</th><th>Captured in</th><th>Variance in</th><th>Meter out</th><th>Captured out</th><th>Variance out</th></tr>
+{% for m in b.meter %}<tr><td><b>{{ m.code }}</b></td><td>{{ m['from'] }} to {{ m.to }}</td>
+<td>{{ R(m.m_in) if m.m_in is not none else '—' }}</td><td>{{ R(m.c_in) }}</td><td>{% if m.var_in is not none %}<span class="pill {{ 'bad' if m.var_in|abs > 5 else 'ok' }}">{{ '%+.1f'|format(m.var_in) }}%</span>{% else %}—{% endif %}</td>
+<td>{{ R(m.m_out) if m.m_out is not none else '—' }}</td><td>{{ R(m.c_out) }}</td><td>{% if m.var_out is not none %}<span class="pill {{ 'bad' if m.var_out|abs > 5 else 'ok' }}">{{ '%+.1f'|format(m.var_out) }}%</span>{% else %}—{% endif %}</td></tr>
+{% else %}<tr><td colspan="8">No machine has two meter photos in this period yet. Capture meter photos from the Machines page.</td></tr>{% endfor %}
+</table></div>
+
+<h2>Exceptions to review</h2>
+<div class="tablewrap"><table>
+<tr><th>Type</th><th>When</th><th>What</th><th>Why it was flagged</th></tr>
+{% for x in b.exceptions %}<tr><td>{{ x.kind }}</td><td>{{ x.when }}</td><td><a href="{{ x.link }}">{{ x.what }}</a></td><td>{{ x.why }}</td></tr>
+{% else %}<tr><td colspan="4">Nothing to review: every photo agrees with what was entered.</td></tr>{% endfor %}
+</table></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const B = {{ {'trend': b.trend, 'machines': b.machines, 'sizes': b.sizes, 'client_mix': b.client_mix, 'hours': b.hours, 'quality': b.quality}|tojson }};
+if (window.Chart) {
+  Chart.defaults.color = '#8b94a7'; Chart.defaults.borderColor = '#262d3b';
+  Chart.defaults.maintainAspectRatio = false;
+  const GOLD = '#d4a63a', GREEN = '#3fb97a', RED = '#e5574f', BLUE = '#5b8def', GREY = '#5b6579', PURPLE = '#9b7bd6';
+  const money = v => 'R ' + Math.round(v).toLocaleString('en-ZA');
+  const mk = (id, cfg) => { const el = document.getElementById(id); if (el) new Chart(el, cfg); };
+  const T = B.trend;
+  mk('c_trend', { data: { labels: T.labels, datasets: [
+    { type: 'bar', label: 'House net', data: T.net, backgroundColor: T.net.map(v => v >= 0 ? 'rgba(63,185,122,.55)' : 'rgba(229,87,79,.6)') },
+    { type: 'line', label: 'Total in', data: T.in, borderColor: BLUE, backgroundColor: BLUE, tension: .25, pointRadius: 0 },
+    { type: 'line', label: 'Payouts', data: T.out, borderColor: GOLD, backgroundColor: GOLD, tension: .25, pointRadius: 0 }] },
+    options: { scales: { y: { ticks: { callback: money } } }, plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + money(c.parsed.y) } } } } });
+  const avg = T.hold.length ? T.hold.reduce((a, b) => a + b, 0) / T.hold.length : 0;
+  mk('c_hold', { type: 'line', data: { labels: T.labels, datasets: [
+    { label: 'Hold %', data: T.hold, borderColor: GREEN, backgroundColor: GREEN, tension: .25, pointRadius: 2 },
+    { label: 'Average', data: T.hold.map(() => avg), borderColor: GREY, borderDash: [6, 4], pointRadius: 0 }] },
+    options: { scales: { y: { ticks: { callback: v => v + '%' } } } } });
+  const M = B.machines;
+  mk('c_mach', { type: 'bar', data: { labels: M.map(m => m.code), datasets: [{ label: 'House net', data: M.map(m => m.net), backgroundColor: M.map(m => m.net >= 0 ? GREEN : RED) }] },
+    options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { callback: money } } } } });
+  mk('c_share', { type: 'bar', data: { labels: M.map(m => m.code), datasets: [{ label: 'Share of turnover', data: M.map(m => m.share), backgroundColor: BLUE }] },
+    options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { callback: v => v + '%' } } } } });
+  mk('c_size', { type: 'bar', data: { labels: B.sizes.map(s => s.label), datasets: [{ label: '% of payouts', data: B.sizes.map(s => s.pct), backgroundColor: GOLD }] },
+    options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.parsed.y + '% (' + B.sizes[c.dataIndex].n + ' payouts, ' + money(B.sizes[c.dataIndex].v) + ')' } } }, scales: { y: { ticks: { callback: v => v + '%' } } } } });
+  const pal = [BLUE, GOLD, GREEN, PURPLE, RED, '#4fb3bf', '#c97b4a', '#8fa0b8', GREY, '#6b5d3a'];
+  mk('c_clients', { type: 'doughnut', data: { labels: B.client_mix.labels, datasets: [{ data: B.client_mix.data, backgroundColor: pal, borderColor: '#181d27' }] },
+    options: { plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: c => c.label + ': ' + money(c.parsed) } } } } });
+  mk('c_hours', { type: 'bar', data: { labels: B.hours.labels, datasets: [{ label: 'Large payouts', data: B.hours.n, backgroundColor: PURPLE }] },
+    options: { plugins: { legend: { display: false } }, scales: { y: { ticks: { precision: 0 } } } } });
+  const qc = { match: GREEN, differs: RED, unread: GOLD, manual: GREY };
+  mk('c_quality', { type: 'doughnut', data: { labels: B.quality.map(q => q.label), datasets: [{ data: B.quality.map(q => q.n), backgroundColor: B.quality.map(q => qc[q.key]), borderColor: '#181d27' }] },
+    options: { plugins: { legend: { position: 'right' } } } });
+}
+</script>
+{% endblock %}
