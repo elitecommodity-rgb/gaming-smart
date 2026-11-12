@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="viewhead"><div><div class="eyebrow">POPIA</div><h1>Compliance</h1>
+<div class="sub">What the system does to protect personal information, and the registers the law expects the responsible party to keep.</div></div><a class="btn ghost sm" href="{{ url_for('privacy') }}">Privacy notice</a></div>
+<div class="grid">
+  <div class="card"><div class="k">Clients given the notice</div><div class="v {{ 'pos' if st.pct == 100 else '' }}">{{ st.pct }}%</div><div class="s">{{ st.noted }} of {{ st.clients }}</div></div>
+  <div class="card"><div class="k">Open requests</div><div class="v {{ 'neg' if st.overdue }}">{{ reqs|selectattr('status', 'equalto', 'open')|list|length }}</div><div class="s">{{ st.overdue }} overdue</div></div>
+  <div class="card"><div class="k">Open incidents</div><div class="v {{ 'neg' if st.open_inc }}">{{ st.open_inc }}</div></div>
+  <div class="card"><div class="k">Past retention</div><div class="v">{{ st.stale }}</div><div class="s">inactive {{ years }}+ years</div></div>
+  <div class="card"><div class="k">Active staff accounts</div><div class="v">{{ st.staff }}</div></div>
+</div>
+
+<h2>Responsible party and Information Officer</h2>
+<div class="card"><p>Responsible party: <b>{{ party }}</b>.
+{% if ro %}Information Officer: <b>{{ ro }}</b> <span class="mono">{{ ro_email }}</span>.{% else %}<span class="neg">No Information Officer is set.</span> Set INFO_OFFICER_NAME and INFO_OFFICER_EMAIL in the app settings. POPIA requires one, and they must be registered with the Information Regulator.{% endif %}
+Gilded Age Consulting acts as operator. A written operator agreement between the venue and Gilded Age Consulting must be signed.{% if licence_on %} This installation reports only totals to the Gilded Age backend.{% endif %}</p></div>
+
+<h2>Safeguards in the system</h2>
+<div class="card"><table class="kv">
+<tr><td>Access control</td><td>Individual accounts with staff, supervisor and admin roles. ID numbers masked for staff.</td></tr>
+<tr><td>Passwords</td><td>At least 10 characters, stored hashed, lock-out after 5 failed sign-ins in 15 minutes, sign-out after 8 hours.</td></tr>
+<tr><td>Audit trail</td><td>Client record views, exports, removals, imports, voids and sign-ins are logged with user and time.</td></tr>
+<tr><td>Notice at capture</td><td>A client cannot be saved without confirming the privacy notice was given. Existing clients can be marked from their record.</td></tr>
+<tr><td>Data subject rights</td><td>Export a person's data (supervisor), correct details, remove personal details (admin).</td></tr>
+<tr><td>Retention</td><td>Inactive clients past {{ years }} years can be anonymised below. ID photos and proof of address are deleted with them.</td></tr>
+<tr><td>Transport and storage</td><td>HTTPS, secure and HttpOnly cookies, no-store page caching, files only served to signed-in staff.</td></tr>
+</table></div>
+
+<h2>Requests from people (access, correction, deletion, objection)</h2>
+<form class="box" method="post"><input type="hidden" name="act" value="request">
+  <label>Type<select name="kind"><option value="access">Access to their information</option><option value="correction">Correction</option><option value="deletion">Deletion</option><option value="objection">Objection to use</option></select></label>
+  <label>Who asked<input name="subject" required placeholder="Name or client number"></label>
+  <label>Notes<input name="notes"></label><button>Log request (30 days to answer)</button></form>
+<div class="tablewrap" style="margin-top:10px"><table><tr><th>Received</th><th>Type</th><th>From</th><th>Answer by</th><th>Status</th><th></th></tr>
+{% for r in reqs %}<tr><td>{{ r.received_at }}</td><td>{{ r.kind }}</td><td>{{ r.subject }}<div class="hint">{{ r.notes }}</div></td><td>{{ r.due_at }}{% if r.status == 'open' and r.due_at < today %} <span class="pill bad">overdue</span>{% endif %}</td>
+<td><span class="pill {{ 'ok' if r.status == 'closed' else 'warn' }}">{{ r.status }}</span></td>
+<td>{% if r.status == 'open' %}<form class="inline" method="post"><input type="hidden" name="act" value="close"><input type="hidden" name="id" value="{{ r.id }}"><button class="sm ghost">Mark answered</button></form>{% endif %}</td></tr>
+{% else %}<tr><td colspan="6">No requests logged.</td></tr>{% endfor %}</table></div>
+<p class="hint">Use a client's record to export their data (access), edit details (correction) or remove personal details (deletion). Financial records the law requires are kept without a name.</p>
+
+<h2>Security incident register</h2>
+<p class="hint">If personal information may have been accessed or acquired by an unauthorised person, the responsible party must notify the Information Regulator and the people affected as soon as reasonably possible. Record it here first.</p>
+<form class="box" method="post"><input type="hidden" name="act" value="incident">
+  <label>Discovered<input type="date" name="discovered_at" value="{{ today }}"></label>
+  <label style="grid-column:span 2">What happened<input name="description" required></label>
+  <label>Information involved<input name="info_affected" placeholder="e.g. names, ID numbers"></label>
+  <label>People affected<input name="people_affected" placeholder="e.g. about 20"></label><button>Log incident</button></form>
+<div class="tablewrap" style="margin-top:10px"><table><tr><th>Discovered</th><th>What happened</th><th>Regulator told</th><th>People told</th><th>Status</th><th></th></tr>
+{% for i in inc %}<tr><td>{{ i.discovered_at }}</td><td>{{ i.description }}<div class="hint">{{ i.info_affected }} {{ '· ' ~ i.people_affected if i.people_affected }}</div></td>
+{% if can('admin') and i.status == 'open' %}<form method="post" id="inc{{ i.id }}"><input type="hidden" name="act" value="incident_update"><input type="hidden" name="id" value="{{ i.id }}"></form>
+<td><input form="inc{{ i.id }}" name="regulator_notified" value="{{ i.regulator_notified or '' }}" placeholder="date"></td><td><input form="inc{{ i.id }}" name="subjects_notified" value="{{ i.subjects_notified or '' }}" placeholder="date"></td>
+<td><label class="check"><input form="inc{{ i.id }}" type="checkbox" name="close" value="1"> close</label></td><td><button form="inc{{ i.id }}" class="sm">Save</button></td>
+{% else %}<td>{{ i.regulator_notified or '—' }}</td><td>{{ i.subjects_notified or '—' }}</td><td><span class="pill {{ 'ok' if i.status == 'closed' else 'warn' }}">{{ i.status }}</span></td><td></td>{% endif %}</tr>
+{% else %}<tr><td colspan="6">No incidents logged.</td></tr>{% endfor %}</table></div>
+
+<h2>Retention</h2>
+<div class="card"><p>{{ st.stale }} clients have had no entries or payouts for {{ years }} years or more. {% if can('admin') %}<form class="inline" method="post"><input type="hidden" name="act" value="retention"><button class="sm ghost" onclick="return confirm('Remove personal details of these clients? This cannot be undone.')" {{ 'disabled' if not st.stale }}>Anonymise them now</button></form>{% else %}An administrator can anonymise them.{% endif %}</p></div>
+<p class="hint">This page supports compliance; it does not replace advice. The responsible party remains accountable under POPIA: appoint and register an Information Officer, sign the operator agreement, and review retention against its gaming licence conditions.</p>
+{% endblock %}
